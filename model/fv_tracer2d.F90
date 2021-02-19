@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -40,7 +40,7 @@
 !   <tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
-!     <td>mp_reduce_max, ng, mp_gather, is_master, group_halo_update_type, 
+!     <td>mp_reduce_max, ng, mp_gather, is_master, group_halo_update_type,
 !         start_group_halo_update, complete_group_halo_update</td>
 !   </tr>
 !    <tr>
@@ -86,7 +86,7 @@ contains
 
 !>@brief The subroutine 'tracer_2d_1L' performs 2-D horizontal-to-lagrangian transport.
 !>@details This subroutine is called if 'z_tracer = .true.'
-!! It modifies 'tracer_2d' so that each layer uses a different diagnosed number 
+!! It modifies 'tracer_2d' so that each layer uses a different diagnosed number
 !! of split tracer timesteps. This potentially accelerates tracer advection when there
 !! is a large difference in layer-maximum wind speeds (cf. polar night jet).
 subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy, npz,   &
@@ -146,10 +146,10 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
       rarea => gridstruct%rarea
 
       sin_sg => gridstruct%sin_sg
-      dxa    => gridstruct%dxa 
-      dya    => gridstruct%dya 
-      dx     => gridstruct%dx  
-      dy     => gridstruct%dy  
+      dxa    => gridstruct%dxa
+      dya    => gridstruct%dya
+      dx     => gridstruct%dx
+      dy     => gridstruct%dy
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx,cmax)
@@ -371,12 +371,12 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
       rarea => gridstruct%rarea
 
       sin_sg => gridstruct%sin_sg
-      dxa    => gridstruct%dxa 
-      dya    => gridstruct%dya 
-      dx     => gridstruct%dx  
-      dy     => gridstruct%dy  
+      dxa    => gridstruct%dxa
+      dya    => gridstruct%dya
+      dx     => gridstruct%dx
+      dy     => gridstruct%dy
 
-!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &  
+!$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx,cmax,q_split,ksplt)
     do k=1,npz
        do j=jsd,jed
@@ -615,10 +615,10 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       rarea => gridstruct%rarea
 
       sin_sg => gridstruct%sin_sg
-      dxa    => gridstruct%dxa 
-      dya    => gridstruct%dya 
-      dx     => gridstruct%dx  
-      dy     => gridstruct%dy  
+      dxa    => gridstruct%dxa
+      dya    => gridstruct%dya
+      dx     => gridstruct%dx
+      dy     => gridstruct%dy
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx,dxa,dy, &
 !$OMP                                  sin_sg,cy,yfx,dya,dx)
@@ -729,7 +729,7 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       call complete_group_halo_update(q_pack, domain)
                            call timing_off('COMM_TRACER')
                        call timing_off('COMM_TOTAL')
-	    
+
       if (gridstruct%nested) then
             do iq=1,nq
                  call nested_grid_BC_apply_intT(q(isd:ied,jsd:jed,:,iq), &

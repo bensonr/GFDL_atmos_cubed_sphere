@@ -1,21 +1,21 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
@@ -195,7 +195,7 @@ contains
           qx(npx-1,j) = (3.*(qin(npx-2,j)+g_in*qin(npx-1,j)) - (g_in*qx(npx,j)+qx(npx-2,j)))/(2.+2.*g_in)
        enddo
     endif
-    
+
     end if
 !------------
 ! Y-Interior:
@@ -296,14 +296,14 @@ contains
        enddo
     endif
 
-    
+
     do j=max(2,js),min(npy-1,je+1)
        do i=max(3,is),min(npx-2,ie+1)
           qyy(i,j) = a2*(qy(i-2,j)+qy(i+1,j)) + a1*(qy(i-1,j)+qy(i,j))
        enddo
        if ( is==1 ) qyy(2,j) = c1*(qy(1,j)+qy(2,j))+c2*(qout(1,j)+qyy(3,j))
        if((ie+1)==npx) qyy(npx-1,j) = c1*(qy(npx-2,j)+qy(npx-1,j))+c2*(qout(npx,j)+qyy(npx-2,j))
- 
+
        do i=max(2,is),min(npx-1,ie+1)
           qout(i,j) = 0.5*(qxx(i,j) + qyy(i,j))   ! averaging
        enddo
@@ -327,7 +327,7 @@ contains
           qy(i,j) = b1*(qin(i,j-1)+qin(i,j)) + b2*(qin(i,j-2)+qin(i,j+1))
        enddo
     enddo
-    
+
     do j=js,je+1
        do i=is,ie+1
           qout(i,j) = 0.5*( a1*(qx(i,j-1)+qx(i,j  ) + qy(i-1,j)+qy(i,  j)) +  &
@@ -345,9 +345,9 @@ contains
           enddo
        endif
     endif
-    
+
   end subroutine a2b_ord4
- 
+
 #else
 
 ! Working version:
@@ -622,7 +622,7 @@ contains
 
 
  else
-    
+
     do j=max(3,js),min(npy-2,je+1)
        do i=max(2,is),min(npx-1,ie+1)
           qxx(i,j) = a2*(qx(i,j-2)+qx(i,j+1)) + a1*(qx(i,j-1)+qx(i,j))
@@ -640,14 +640,14 @@ contains
        enddo
     endif
 
-    
+
     do j=max(2,js),min(npy-1,je+1)
        do i=max(3,is),min(npx-2,ie+1)
           qyy(i,j) = a2*(qy(i-2,j)+qy(i+1,j)) + a1*(qy(i-1,j)+qy(i,j))
        enddo
        if ( is==1 ) qyy(2,j) = c1*(qy(1,j)+qy(2,j))+c2*(qout(1,j)+qyy(3,j))
        if((ie+1)==npx) qyy(npx-1,j) = c1*(qy(npx-2,j)+qy(npx-1,j))+c2*(qout(npx,j)+qyy(npx-2,j))
- 
+
        do i=max(2,is),min(npx-1,ie+1)
           qout(i,j) = 0.5*(qxx(i,j) + qyy(i,j))   ! averaging
        enddo
@@ -671,7 +671,7 @@ contains
           qy(i,j) = b1*(qin(i,j-1)+qin(i,j)) + b2*(qin(i,j-2)+qin(i,j+1))
        enddo
     enddo
-    
+
     do j=js,je+1
        do i=is,ie+1
           qout(i,j) = 0.5*( a1*(qx(i,j-1)+qx(i,j  ) + qy(i-1,j)+qy(i,  j)) +  &
@@ -689,7 +689,7 @@ contains
           enddo
        endif
     endif
-    
+
   end subroutine a2b_ord4
 #endif
 
@@ -704,7 +704,7 @@ contains
     real q1(npx), q2(npy)
     integer :: i,j
     integer :: is1, js1, is2, js2, ie1, je1
-    
+
     real, pointer, dimension(:,:,:) :: grid, agrid
     real, pointer, dimension(:,:)   :: dxa, dya
 
@@ -804,7 +804,7 @@ contains
 
  endif
 
-    
+
     if ( present(replace) ) then
        if ( replace ) then
           do j=js,je+1
@@ -814,7 +814,7 @@ contains
           enddo
        endif
     endif
-    
+
   end subroutine a2b_ord2
 
   real function extrap_corner ( p0, p1, p2, q1, q2 )
@@ -921,13 +921,13 @@ contains
                qin(0,npy  ) = qin(-1,npy-1)
           endif
 
-          qout(i,j) = van2(1, i,j)*qin(i-2,j-2) + van2(2, i,j)*qin(i-1,j-2) +  &  
-                      van2(3, i,j)*qin(i  ,j-2) + van2(4, i,j)*qin(i+1,j-2) +  &  
-                      van2(5, i,j)*qin(i-2,j-1) + van2(6, i,j)*qin(i-1,j-1) +  &  
-                      van2(7, i,j)*qin(i  ,j-1) + van2(8, i,j)*qin(i+1,j-1) +  &  
-                      van2(9, i,j)*qin(i-2,j  ) + van2(10,i,j)*qin(i-1,j  ) +  &  
-                      van2(11,i,j)*qin(i  ,j  ) + van2(12,i,j)*qin(i+1,j  ) +  &  
-                      van2(13,i,j)*qin(i-2,j+1) + van2(14,i,j)*qin(i-1,j+1) +  &  
+          qout(i,j) = van2(1, i,j)*qin(i-2,j-2) + van2(2, i,j)*qin(i-1,j-2) +  &
+                      van2(3, i,j)*qin(i  ,j-2) + van2(4, i,j)*qin(i+1,j-2) +  &
+                      van2(5, i,j)*qin(i-2,j-1) + van2(6, i,j)*qin(i-1,j-1) +  &
+                      van2(7, i,j)*qin(i  ,j-1) + van2(8, i,j)*qin(i+1,j-1) +  &
+                      van2(9, i,j)*qin(i-2,j  ) + van2(10,i,j)*qin(i-1,j  ) +  &
+                      van2(11,i,j)*qin(i  ,j  ) + van2(12,i,j)*qin(i+1,j  ) +  &
+                      van2(13,i,j)*qin(i-2,j+1) + van2(14,i,j)*qin(i-1,j+1) +  &
                       van2(15,i,j)*qin(i  ,j+1) + van2(16,i,j)*qin(i+1,j+1)
 123  continue
      enddo
@@ -959,7 +959,7 @@ contains
                        extrap_corner(p0, agrid(0,npy-1,1:2), agrid(-1,npy-2,1:2), qin(0,npy-1), qin(-1,npy-2)) + &
                        extrap_corner(p0, agrid(1,npy,  1:2), agrid( 2,npy+1,1:2), qin(1,npy  ), qin( 2,npy+1)))*r3
     endif
-    
+
  else  ! grid_type>=3
 
 !------------------------
@@ -977,7 +977,7 @@ contains
           qy(i,j) = b1*(qin(i,j-1)+qin(i,j)) + b2*(qin(i,j-2)+qin(i,j+1))
        enddo
     enddo
-    
+
     do j=js,je+1
        do i=is,ie+1
           qout(i,j) = 0.5*( a1*(qx(i,j-1)+qx(i,j  ) + qy(i-1,j)+qy(i,  j)) +  &
@@ -996,8 +996,8 @@ contains
           enddo
      endif
  endif
-    
+
   end subroutine a2b_ord4
 #endif
-  
+
 end module a2b_edge_mod

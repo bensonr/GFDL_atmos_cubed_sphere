@@ -1,26 +1,26 @@
 !***********************************************************************
-!*                   GNU Lesser General Public License                 
+!*                   GNU Lesser General Public License
 !*
 !* This file is part of the FV3 dynamical core.
 !*
-!* The FV3 dynamical core is free software: you can redistribute it 
+!* The FV3 dynamical core is free software: you can redistribute it
 !* and/or modify it under the terms of the
 !* GNU Lesser General Public License as published by the
-!* Free Software Foundation, either version 3 of the License, or 
+!* Free Software Foundation, either version 3 of the License, or
 !* (at your option) any later version.
 !*
-!* The FV3 dynamical core is distributed in the hope that it will be 
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty 
-!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
 !* You should have received a copy of the GNU Lesser General Public
-!* License along with the FV3 dynamical core.  
+!* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
 !>@brief The module 'tp_core' is a collection of routines to support FV transport.
-!>@details The module contains the scalar advection scheme and PPM operators. 
+!>@details The module contains the scalar advection scheme and PPM operators.
 module tp_core_mod
 
 ! Modules Included:
@@ -103,7 +103,7 @@ module tp_core_mod
 contains
 
 !>@brief The subroutine 'fv_tp_2d' contains the FV advection scheme
-!! \cite putman2007finite \cite lin1996multiflux. 
+!! \cite putman2007finite \cite lin1996multiflux.
 !>@details It performs 1 time step of the forward advection.
  subroutine fv_tp_2d(q, crx, cry, npx, npy, hord, fx, fy, xfx, yfx,  &
                      gridstruct, bd, ra_x, ra_y, lim_fac, mfx, mfy, mass, nord, damp_c)
@@ -111,10 +111,10 @@ contains
    integer, intent(in):: npx, npy
    integer, intent(in)::hord
 
-   real, intent(in)::  crx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
-   real, intent(in)::  xfx(bd%is:bd%ie+1,bd%jsd:bd%jed)  
-   real, intent(in)::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )  
-   real, intent(in)::  yfx(bd%isd:bd%ied,bd%js:bd%je+1 )  
+   real, intent(in)::  crx(bd%is:bd%ie+1,bd%jsd:bd%jed)
+   real, intent(in)::  xfx(bd%is:bd%ie+1,bd%jsd:bd%jed)
+   real, intent(in)::  cry(bd%isd:bd%ied,bd%js:bd%je+1 )
+   real, intent(in)::  yfx(bd%isd:bd%ied,bd%js:bd%je+1 )
    real, intent(in):: ra_x(bd%is:bd%ie,bd%jsd:bd%jed)
    real, intent(in):: ra_y(bd%isd:bd%ied,bd%js:bd%je)
    real, intent(inout):: q(bd%isd:bd%ied,bd%jsd:bd%jed)  !< transported scalar
@@ -167,7 +167,7 @@ contains
 
    do j=js,je+1
       do i=isd,ied
-         fyy(i,j) = yfx(i,j) * fy2(i,j) 
+         fyy(i,j) = yfx(i,j) * fy2(i,j)
       enddo
    enddo
    do j=js,je
@@ -320,7 +320,7 @@ contains
     endif
 
  endif
-      
+
  end subroutine copy_corners
 
  subroutine xppm(flux, q, c, iord, is,ie,isd,ied, jfirst,jlast,jsd,jed, npx, npy, dxa, bounded_domain, grid_type, lim_fac)
@@ -483,7 +483,7 @@ contains
            b0(i) = bl(i) + br(i)
            smt5(i) = bl(i)*br(i) < 0.
         enddo
-! A positive-definite scheme by S-J Lin; Harris et al (2020) JAMES       
+! A positive-definite scheme by S-J Lin; Harris et al (2020) JAMES
       elseif ( iord==-5 ) then
         do i=is-1,ie+1
            bl(i) = al(i)   - q1(i)
@@ -1009,7 +1009,7 @@ endif
 !
 ! !DESCRIPTION:
 !
-!     Ghost 4d east/west 
+!     Ghost 4d east/west
 !
 ! !REVISION HISTORY:
 !    2005.08.22   Putman
@@ -1129,11 +1129,11 @@ endif
 #ifdef USE_SG
    real, pointer, dimension(:,:)   :: dx, dy, rdxc, rdyc
    real, pointer, dimension(:,:,:) :: sin_sg
-   dx       => gridstruct%dx     
-   dy       => gridstruct%dy     
-   rdxc     => gridstruct%rdxc   
-   rdyc     => gridstruct%rdyc   
-   sin_sg   => gridstruct%sin_sg 
+   dx       => gridstruct%dx
+   dy       => gridstruct%dy
+   rdxc     => gridstruct%rdxc
+   rdyc     => gridstruct%rdyc
+   sin_sg   => gridstruct%sin_sg
 #endif
 
    i1 = is-1-nord;    i2 = ie+1+nord
