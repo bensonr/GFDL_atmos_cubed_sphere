@@ -150,15 +150,14 @@ use fms_mod,                only: file_exist, open_namelist_file,    &
                                   close_file, error_mesg, FATAL,     &
                                   check_nml_error, stdlog,           &
                                   write_version_number,              &
-                                  set_domain,                        &
-                                  read_data,                         &
+                                  set_domain,   &
                                   mpp_clock_id, mpp_clock_begin,     &
                                   mpp_clock_end, CLOCK_SUBCOMPONENT, &
                                   clock_flag_default, nullify_domain
 use mpp_mod,                only: mpp_error, stdout, FATAL, WARNING, NOTE, &
-                                  input_nml_file, mpp_root_pe,       &
-                                  mpp_npes, mpp_pe, mpp_chksum,      &
-                                  mpp_get_current_pelist,            &
+                                  input_nml_file, mpp_root_pe,    &
+                                  mpp_npes, mpp_pe, mpp_chksum,   &
+                                  mpp_get_current_pelist,         &
                                   mpp_set_current_pelist, mpp_sync
 use mpp_parameter_mod,      only: EUPDATE, WUPDATE, SUPDATE, NUPDATE
 use mpp_domains_mod,        only: domain2d, mpp_update_domains
@@ -198,8 +197,12 @@ use multi_gases_mod,  only: virq, virq_max, num_gas, ri, cpi
 use fv_regional_mod,    only: start_regional_restart, read_new_bc_data, &
                               a_step, p_step, current_time_in_seconds
 
-use mpp_domains_mod,    only:  mpp_get_data_domain, mpp_get_compute_domain
-use fv_grid_utils_mod,  only: g_sum
+use mpp_domains_mod, only:  mpp_get_data_domain, mpp_get_compute_domain
+use gfdl_mp_mod,        only: gfdl_mp_init, gfdl_mp_end
+use coarse_graining_mod, only: coarse_graining_init
+use coarse_grained_diagnostics_mod, only: fv_coarse_diag_init, fv_coarse_diag
+use coarse_grained_restart_files_mod, only: fv_coarse_restart_init
+use diag_manager_mod,   only: send_data
 
 implicit none
 private
@@ -233,7 +236,7 @@ character(len=20)   :: mod_name = 'fvGFS/atmosphere_mod'
 
 !---- private data ----
   type (time_type) :: Time_step_atmos
-  public Atm, mygrid
+  public Atm
 
   !These are convenience variables for local use only, and are set to values in Atm%
   real    :: dt_atmos
@@ -321,10 +324,19 @@ contains
 
    if(Atm(mygrid)%flagstruct%warm_start) then
      a_step = nint(current_time_in_seconds/dt_atmos)
+
+   if (Atm(mygrid)%coarse_graining%write_coarse_restart_files .or. &
+        Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+      call coarse_graining_init(Atm(mygrid)%flagstruct%npx, Atm(mygrid)%npz, &
+           Atm(mygrid)%layout, Atm(mygrid)%bd%is, Atm(mygrid)%bd%ie, &
+           Atm(mygrid)%bd%js, Atm(mygrid)%bd%je, Atm(mygrid)%coarse_graining%factor, &
+           Atm(mygrid)%coarse_graining%nx_coarse, &
+           Atm(mygrid)%coarse_graining%strategy, &
+           Atm(mygrid)%coarse_graining%domain)
    endif
 
 !----- write version and namelist to log file -----
-   call write_version_number ( 'fvGFS/ATMOSPHERE_MOD', version )
+   call write_version_number ( mod_name, version )
 
 !-----------------------------------
 
@@ -393,7 +405,8 @@ contains
 !----- allocate and zero out the dynamics (and accumulated) tendencies
    allocate( u_dt(isd:ied,jsd:jed,npz), &
              v_dt(isd:ied,jsd:jed,npz), &
-             t_dt(isc:iec,jsc:jec,npz) )
+             t_dt(isc:iec,jsc:jec,npz), &
+             qv_dt(isc:iec,jsc:jec,npz) )
 !--- allocate pref
    allocate(pref(npz+1,2), dum1d(npz+1))
 
@@ -404,6 +417,20 @@ contains
 !----- initialize atmos_axes and fv_dynamics diagnostics
        !I've had trouble getting this to work with multiple grids at a time; worth revisiting?
    call fv_diag_init(Atm(mygrid:mygrid), Atm(mygrid)%atmos_axes, Time, npx, npy, npz, Atm(mygrid)%flagstruct%p_ref)
+
+   if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+      call fv_coarse_diag_init(Atm, Time, Atm(mygrid)%atmos_axes(3), &
+           Atm(mygrid)%atmos_axes(4), Atm(mygrid)%coarse_graining)
+   endif
+   if (Atm(mygrid)%coarse_graining%write_coarse_restart_files) then
+      call fv_coarse_restart_init(mygrid, Atm(mygrid)%npz, Atm(mygrid)%flagstruct%nt_prog, &
+           Atm(mygrid)%flagstruct%nt_phys, Atm(mygrid)%flagstruct%hydrostatic, &
+           Atm(mygrid)%flagstruct%hybrid_z, Atm(mygrid)%flagstruct%fv_land, &
+           Atm(mygrid)%coarse_graining%write_coarse_dgrid_vel_rst, &
+           Atm(mygrid)%coarse_graining%write_coarse_agrid_vel_rst, &
+           Atm(mygrid)%coarse_graining%domain, &
+           Atm(mygrid)%coarse_graining%restart)
+   endif
 
 !---------- reference profile -----------
     ps1 = 101325.
@@ -505,6 +532,9 @@ contains
 #ifdef DEBUG
    call nullify_domain()
    call fv_diag(Atm(mygrid:mygrid), zvir, Time, -1)
+   if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+      call fv_coarse_diag(Atm(mygrid:mygrid), fv_time)
+   endif
 #endif
 
    call set_domain(Atm(mygrid)%domain)
@@ -548,9 +578,9 @@ contains
 
       do k=2,km+1
          do i=ifirst,ilast
-            pe(i,k,j)   = pe(i,k-1,j) + delp(i,j,k-1)
+            pe(i,k,j) = pe(i,k-1,j) + delp(i,j,k-1)
             peln(i,k,j) = log(pe(i,k,j))
-            pk(i,j,k)   = exp( kappa*peln(i,k,j) )
+            pk(i,j,k) = exp( kappa*peln(i,k,j) )
          enddo
       enddo
 
@@ -611,33 +641,33 @@ contains
       p_step = psc
                     call timing_on('fv_dynamics')
 !uc/vc only need be same on coarse grid? However BCs do need to be the same
-      call fv_dynamics(npx, npy, npz, nq, Atm(n)%ng, dt_atmos/real(abs(p_split)),&
-                       Atm(n)%flagstruct%consv_te, Atm(n)%flagstruct%fill,       &
-                       Atm(n)%flagstruct%reproduce_sum, kappa, cp_air, zvir,     &
-                       Atm(n)%ptop, Atm(n)%ks, nq,                               &
-                       n_split_loc, Atm(n)%flagstruct%q_split,                   &
-!                      Atm(n)%flagstruct%n_split, Atm(n)%flagstruct%q_split,     &
-                       Atm(n)%u,    Atm(n)%v,     Atm(n)%w,  Atm(n)%delz,        &
-                       Atm(n)%flagstruct%hydrostatic,                            &
-                       Atm(n)%pt  , Atm(n)%delp,  Atm(n)%q,  Atm(n)%ps,          &
-                       Atm(n)%pe,   Atm(n)%pk,    Atm(n)%peln,                   &
-                       Atm(n)%pkz,  Atm(n)%phis,  Atm(n)%q_con,                  &
-                       Atm(n)%omga, Atm(n)%ua,    Atm(n)%va, Atm(n)%uc,          &
-                       Atm(n)%vc,   Atm(n)%ak,    Atm(n)%bk, Atm(n)%mfx,         &
-                       Atm(n)%mfy , Atm(n)%cx,    Atm(n)%cy, Atm(n)%ze0,         &
-                       Atm(n)%flagstruct%hybrid_z,                               &
-                       Atm(n)%gridstruct,  Atm(n)%flagstruct,                    &
-                       Atm(n)%neststruct,  Atm(n)%idiag, Atm(n)%bd,              &
-                       Atm(n)%parent_grid, Atm(n)%domain,Atm(n)%diss_est)
+     call fv_dynamics(npx, npy, npz, nq, Atm(n)%ng, dt_atmos/real(abs(p_split)),&
+                      Atm(n)%flagstruct%consv_te, Atm(n)%flagstruct%fill,       &
+                      Atm(n)%flagstruct%reproduce_sum, kappa, cp_air, zvir,     &
+                      Atm(n)%ptop, Atm(n)%ks, nq,                               &
+                      n_split_loc, Atm(n)%flagstruct%q_split,                   &
+!                     Atm(n)%flagstruct%n_split, Atm(n)%flagstruct%q_split,     &
+                      Atm(n)%u,    Atm(n)%v,     Atm(n)%w,  Atm(n)%delz,        &
+                      Atm(n)%flagstruct%hydrostatic,                            &                       Atm(n)%pt  , Atm(n)%delp,  Atm(n)%q,  Atm(n)%ps,          &
+                      Atm(n)%pe,   Atm(n)%pk,    Atm(n)%peln,                   &
+                      Atm(n)%pkz,  Atm(n)%phis,  Atm(n)%q_con,                  &
+                      Atm(n)%omga, Atm(n)%ua,    Atm(n)%va, Atm(n)%uc,          &
+                      Atm(n)%vc,   Atm(n)%ak,    Atm(n)%bk, Atm(n)%mfx,         &
+                      Atm(n)%mfy , Atm(n)%cx,    Atm(n)%cy, Atm(n)%ze0,         &
+                      Atm(n)%flagstruct%hybrid_z,                               &
+                      Atm(n)%gridstruct,  Atm(n)%flagstruct,                    &
+                      Atm(n)%neststruct,  Atm(n)%idiag, Atm(n)%bd,              &
+                      Atm(n)%parent_grid, Atm(n)%domain,Atm(n)%diss_est,        &
+                      Atm(n)%inline_mp)
 
-      call timing_off('fv_dynamics')
+     call timing_off('fv_dynamics')
 
-      if (ngrids > 1 .and. (psc < p_split .or. p_split < 0)) then
+    if (ngrids > 1 .and. (psc < p_split .or. p_split < 0)) then
        call mpp_sync()
-        call timing_on('TWOWAY_UPDATE')
+       call timing_on('TWOWAY_UPDATE')
        call twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, fv_time, mygrid)
-        call timing_off('TWOWAY_UPDATE')
-      endif
+       call timing_off('TWOWAY_UPDATE')
+    endif
 
     end do !p_split
     call mpp_clock_end (id_dynam)
@@ -647,9 +677,12 @@ contains
 !-----------------------------------------------------
 !--- zero out tendencies
     call mpp_clock_begin (id_subgridz)
-    u_dt(:,:,:)   = 0.
+    u_dt(:,:,:)   = 0. ! These are updated by fv_subgrid_z
     v_dt(:,:,:)   = 0.
-    t_dt(:,:,:)   = 0.
+    t_dt(:,:,:)   = Atm(n)%pt(isc:iec,jsc:jec,:)
+    qv_dt(:,:,:)  = Atm(n)%q (isc:iec,jsc:jec,:,sphum)
+
+    rdt = 1./dt_atmos
 
     w_diff = get_tracer_index (MODEL_ATMOS, 'w_diff' )
     if ( Atm(n)%flagstruct%fv_sg_adj > 0 ) then
@@ -677,6 +710,21 @@ contains
         enddo
     endif
 #endif
+
+    if (Atm(1)%idiag%id_u_dt_sg > 0) then
+       used = send_data(Atm(1)%idiag%id_u_dt_sg, u_dt(isc:iec,jsc:jec,:), fv_time)
+    end if
+    if (Atm(1)%idiag%id_v_dt_sg > 0) then
+       used = send_data(Atm(1)%idiag%id_v_dt_sg, v_dt(isc:iec,jsc:jec,:), fv_time)
+    end if
+    if (Atm(1)%idiag%id_t_dt_sg > 0) then
+       t_dt(:,:,:) = rdt*(Atm(1)%pt(isc:iec,jsc:jec,:) - t_dt(:,:,:))
+       used = send_data(Atm(1)%idiag%id_t_dt_sg, t_dt, fv_time)
+    end if
+    if (Atm(1)%idiag%id_qv_dt_sg > 0) then
+       qv_dt(:,:,:) = rdt*(Atm(1)%q(isc:iec,jsc:jec,:,sphum) - qv_dt(:,:,:))
+       used = send_data(Atm(1)%idiag%id_qv_dt_sg, qv_dt, fv_time)
+    end if
 
    call mpp_clock_end (id_subgridz)
 
@@ -715,6 +763,9 @@ contains
       call fv_diag(Atm(mygrid:mygrid), zvir, fv_time, Atm(mygrid)%flagstruct%print_freq)
       call fv_nggps_diag_init(Atm(mygrid:mygrid), Atm(mygrid)%atmos_axes, fv_time)
       call fv_nggps_diag(Atm(mygrid:mygrid), zvir, fv_time)
+      if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+         call fv_coarse_diag(Atm(mygrid:mygrid), fv_time)
+      endif
       first_diag = .false.
       call timing_off('FV_DIAG')
    endif
@@ -722,7 +773,7 @@ contains
    call fv_end(Atm, mygrid, restart_endfcst)
    deallocate (Atm)
 
-   deallocate( u_dt, v_dt, t_dt, pref, dum1d )
+   deallocate( u_dt, v_dt, t_dt, qv_dt, pref, dum1d )
 
  end subroutine atmosphere_end
 
@@ -840,17 +891,13 @@ contains
    type(domain2d), intent(out) :: fv_domain
    integer, intent(out) :: layout(2)
    logical, intent(out) :: regional
-   logical, intent(out) :: nested
-   integer, pointer, intent(out) :: pelist(:)
 !  returns the domain2d variable associated with the coupling grid
 !  note: coupling is done using the mass/temperature grid with no halos
 
    fv_domain = Atm(mygrid)%domain_for_coupler
    layout(1:2) =  Atm(mygrid)%layout(1:2)
+
    regional = Atm(mygrid)%flagstruct%regional
-   nested = ngrids > 1
-   call set_atmosphere_pelist()
-   pelist => Atm(mygrid)%pelist
 
  end subroutine atmosphere_domain
 
@@ -1304,8 +1351,8 @@ contains
 
 
  subroutine get_stock_pe(index, value)
-   integer, intent(in)  :: index
-   real,    intent(out) :: value
+   integer, intent(in) :: index
+   real,   intent(out) :: value
 
 #ifdef USE_STOCK
    include 'stock.inc'
@@ -1619,6 +1666,9 @@ contains
      call nullify_domain()
      call timing_on('FV_DIAG')
      call fv_diag(Atm(mygrid:mygrid), zvir, fv_time, Atm(mygrid)%flagstruct%print_freq)
+      if (Atm(mygrid)%coarse_graining%write_coarse_diagnostics) then
+         call fv_coarse_diag(Atm(mygrid:mygrid), fv_time)
+      endif
      first_diag = .false.
      call timing_off('FV_DIAG')
 
@@ -1747,7 +1797,7 @@ contains
                      Atm(mygrid)%cx, Atm(mygrid)%cy, Atm(mygrid)%ze0, Atm(mygrid)%flagstruct%hybrid_z,    &
                      Atm(mygrid)%gridstruct, Atm(mygrid)%flagstruct,                            &
                      Atm(mygrid)%neststruct, Atm(mygrid)%idiag, Atm(mygrid)%bd, Atm(mygrid)%parent_grid,  &
-                     Atm(mygrid)%domain,Atm(mygrid)%diss_est)
+                     Atm(mygrid)%domain,Atm(mygrid)%diss_est, Atm(mygrid)%inline_mp)
 ! Backward
     call fv_dynamics(Atm(mygrid)%npx, Atm(mygrid)%npy, npz,  nq, Atm(mygrid)%ng, -dt_atmos, 0.,      &
                      Atm(mygrid)%flagstruct%fill, Atm(mygrid)%flagstruct%reproduce_sum, kappa, cp_air, zvir,  &
@@ -1762,7 +1812,7 @@ contains
                      Atm(mygrid)%cx, Atm(mygrid)%cy, Atm(mygrid)%ze0, Atm(mygrid)%flagstruct%hybrid_z,    &
                      Atm(mygrid)%gridstruct, Atm(mygrid)%flagstruct,                            &
                      Atm(mygrid)%neststruct, Atm(mygrid)%idiag, Atm(mygrid)%bd, Atm(mygrid)%parent_grid,  &
-                     Atm(mygrid)%domain,Atm(mygrid)%diss_est)
+                     Atm(mygrid)%domain,Atm(mygrid)%diss_est, Atm(mygrid)%inline_mp)
 !Nudging back to IC
 !$omp parallel do default (none) &
 !$omp              shared (pref, npz, jsc, jec, isc, iec, n, sphum, Atm, u0, v0, t0, dp0, xt, zvir, mygrid, nudge_dz, dz0) &
@@ -1838,7 +1888,7 @@ contains
                      Atm(mygrid)%cx, Atm(mygrid)%cy, Atm(mygrid)%ze0, Atm(mygrid)%flagstruct%hybrid_z,    &
                      Atm(mygrid)%gridstruct, Atm(mygrid)%flagstruct,                            &
                      Atm(mygrid)%neststruct, Atm(mygrid)%idiag, Atm(mygrid)%bd, Atm(mygrid)%parent_grid,  &
-                     Atm(mygrid)%domain,Atm(mygrid)%diss_est)
+                     Atm(mygrid)%domain,Atm(mygrid)%diss_est, Atm(mygrid)%inline_mp)
 ! Forward call
     call fv_dynamics(Atm(mygrid)%npx, Atm(mygrid)%npy, npz,  nq, Atm(mygrid)%ng, dt_atmos, 0.,      &
                      Atm(mygrid)%flagstruct%fill, Atm(mygrid)%flagstruct%reproduce_sum, kappa, cp_air, zvir,  &
@@ -1852,7 +1902,7 @@ contains
                      Atm(mygrid)%cx, Atm(mygrid)%cy, Atm(mygrid)%ze0, Atm(mygrid)%flagstruct%hybrid_z,    &
                      Atm(mygrid)%gridstruct, Atm(mygrid)%flagstruct,                            &
                      Atm(mygrid)%neststruct, Atm(mygrid)%idiag, Atm(mygrid)%bd, Atm(mygrid)%parent_grid,  &
-                     Atm(mygrid)%domain,Atm(mygrid)%diss_est)
+                     Atm(mygrid)%domain,Atm(mygrid)%diss_est, Atm(mygrid)%inline_mp)
 ! Nudging back to IC
 !$omp parallel do default (none) &
 !$omp              shared (nudge_dz,npz, jsc, jec, isc, iec, n, sphum, Atm, u0, v0, t0, dz0, dp0, xt, zvir, mygrid) &
@@ -2152,13 +2202,33 @@ contains
          endif
          phys_diag%phys_qi_dt = q(isc:iec,jsc:jec,:,ice_wat)
       endif
+
+      if (liq_wat > 0) then
+         if (allocated(phys_diag%phys_liq_wat_dt)) phys_diag%phys_liq_wat_dt = q(isc:iec,jsc:jec,:,liq_wat)
+      endif
+
+      if (rainwat > 0) then
+         if (allocated(phys_diag%phys_qr_dt)) phys_diag%phys_qr_dt = q(isc:iec,jsc:jec,:,rainwat)
+      endif
+
+      if (ice_wat > 0) then
+         if (allocated(phys_diag%phys_ice_wat_dt)) phys_diag%phys_ice_wat_dt = q(isc:iec,jsc:jec,:,ice_wat)
+      endif
+
+      if (graupel > 0) then
+         if (allocated(phys_diag%phys_qg_dt)) phys_diag%phys_qg_dt = q(isc:iec,jsc:jec,:,graupel)
+      endif
+
+      if (snowwat > 0) then
+         if (allocated(phys_diag%phys_qs_dt)) phys_diag%phys_qs_dt = q(isc:iec,jsc:jec,:,snowwat)
+      endif
    else
       if (allocated(phys_diag%phys_qv_dt)) phys_diag%phys_qv_dt = q(isc:iec,jsc:jec,:,sphum) - phys_diag%phys_qv_dt
       if (allocated(phys_diag%phys_ql_dt)) then
          phys_diag%phys_ql_dt = q(isc:iec,jsc:jec,:,liq_wat) - phys_diag%phys_ql_dt
       endif
       if (allocated(phys_diag%phys_qi_dt)) then
-         phys_diag%phys_qi_dt = q(isc:iec,jsc:jec,:,ice_wat) - phys_diag%phys_qv_dt
+         phys_diag%phys_qi_dt = q(isc:iec,jsc:jec,:,ice_wat) - phys_diag%phys_qi_dt
       endif
    endif
 
@@ -2174,8 +2244,27 @@ contains
       if (allocated(phys_diag%phys_qv_dt)) phys_diag%phys_qv_dt = phys_diag%phys_qv_dt / dt
       if (allocated(phys_diag%phys_ql_dt)) phys_diag%phys_ql_dt = phys_diag%phys_ql_dt / dt
       if (allocated(phys_diag%phys_qi_dt)) phys_diag%phys_qi_dt = phys_diag%phys_qi_dt / dt
-   endif
 
+      if (liq_wat > 0) then
+         if (allocated(phys_diag%phys_liq_wat_dt)) phys_diag%phys_liq_wat_dt = (q(isc:iec,jsc:jec,:,liq_wat) - phys_diag%phys_liq_wat_dt) / dt
+      endif
+
+      if (rainwat > 0) then
+         if (allocated(phys_diag%phys_qr_dt)) phys_diag%phys_qr_dt = (q(isc:iec,jsc:jec,:,rainwat) - phys_diag%phys_qr_dt) / dt
+      endif
+
+      if (ice_wat > 0) then
+         if (allocated(phys_diag%phys_ice_wat_dt)) phys_diag%phys_ice_wat_dt = (q(isc:iec,jsc:jec,:,ice_wat) - phys_diag%phys_ice_wat_dt) / dt
+      endif
+
+      if (graupel > 0) then
+         if (allocated(phys_diag%phys_qg_dt)) phys_diag%phys_qg_dt = (q(isc:iec,jsc:jec,:,graupel) - phys_diag%phys_qg_dt) / dt
+      endif
+
+      if (snowwat > 0) then
+         if (allocated(phys_diag%phys_qs_dt)) phys_diag%phys_qs_dt = (q(isc:iec,jsc:jec,:,snowwat) - phys_diag%phys_qs_dt) / dt
+      endif
+   endif
 
  end subroutine atmos_phys_qdt_diag
 

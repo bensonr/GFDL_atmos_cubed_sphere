@@ -2205,8 +2205,7 @@ contains
       do i=isd,0
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
       end do
-
-         end do
+      end do
       end do
    end if
 
@@ -2229,8 +2228,7 @@ contains
 !OMP parallel do default(none) shared(npz,jsd,istart,iend,istag,var_nest,var_t0,var_t1,split,step,denom)
       do k=1,npz
       do j=jsd,0
-         do i=istart,iend+istag
-
+      do i=istart,iend+istag
             var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
       end do
       end do
@@ -2244,13 +2242,11 @@ contains
 !OMP parallel do default(none) shared(npz,jsd,jed,jstag,npx,isd,istag,var_nest,var_t0,var_t1,split,step,denom)
       do k=1,npz
       do j=jsd,jed+jstag
-         do i=npx+istag,ied+istag
-            var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
-
-         end do
+      do i=npx+istag,ied+istag
+         var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
       end do
       end do
-
+      end do
    end if
 
    if (je == npy-1 ) then
@@ -2272,12 +2268,10 @@ contains
 !OMP parallel do default(none) shared(npz,npy,jed,jstag,istart,iend,istag,var_nest,var_t0,var_t1,split,step,denom)
       do k=1,npz
       do j=npy+jstag,jed+jstag
-         do i=istart,iend+istag
-
-            var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
-
-         end do
-         end do
+      do i=istart,iend+istag
+         var_nest(i,j,k) = (var_t0(i,j,k)*(split-step) + step*var_t1(i,j,k))*denom
+      end do
+      end do
       end do
 
    end if
@@ -2306,13 +2300,14 @@ contains
 
    real :: var_nest_3d(is_n:ie_n+istag,js_n:je_n+jstag,1)
    real :: var_coarse_3d(isd_p:ied_p+istag,jsd_p:jed_p+jstag,1)
+   integer( KIND = 8) :: ptr_nest=0
+   integer( KIND = 8) :: ptr_coarse=0
    pointer(ptr_nest, var_nest_3d)
    pointer(ptr_coarse, var_coarse_3d)
 
-!   if (child_proc .and. size(var_nest) > 1) ptr_nest = LOC(var_nest)
-!   if (parent_proc .and. size(var_coarse) > 1) ptr_coarse = LOC(var_coarse)
-   ptr_nest = LOC(var_nest)
-   ptr_coarse = LOC(var_coarse)
+   if (child_proc .and. size(var_nest) > 1) ptr_nest = LOC(var_nest)
+   if (parent_proc .and. size(var_coarse) > 1) ptr_coarse = LOC(var_coarse)
+
    call update_coarse_grid_mpp(var_coarse_3d, var_nest_3d, &
         nest_domain, dx, dy, area, &
         bd, isd_p, ied_p, jsd_p, jed_p, is_n, ie_n, js_n, je_n, &
@@ -2554,7 +2549,6 @@ contains
       end select
 
    else if (istag == 0 .and. jstag > 0) then
-
 
       select case (nestupdate)
       case (1,6,7,8)

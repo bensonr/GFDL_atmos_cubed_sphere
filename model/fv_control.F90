@@ -1,4 +1,3 @@
-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -153,6 +152,7 @@ module fv_control_mod
                                   mpp_declare_pelist, mpp_root_pe, mpp_recv, mpp_sync_self, read_input_nml, &
                                   mpp_max
    use fv_diagnostics_mod,  only: fv_diag_init_gn
+   use coarse_grained_restart_files_mod, only: deallocate_coarse_restart_type
 
 #ifdef MULTI_GASES
    use constants_mod,       only: rvgas, cp_air
@@ -194,7 +194,7 @@ module fv_control_mod
 
      integer, intent(INOUT) :: p_split
      character(100) :: pe_list_name, errstring
-     integer :: n, npes, pecounter, i, num_family, ntiles_nest_all
+     integer :: n, npes, pecounter, i, num_family, ntiles_nest_all, num_tile_top
      integer, allocatable :: global_pelist(:)
      integer, dimension(MAX_NNEST) :: grid_pes = 0
      integer, dimension(MAX_NNEST) :: grid_coarse = -1
@@ -259,6 +259,7 @@ module fv_control_mod
      logical , pointer :: RF_fast
      logical , pointer :: consv_am
      logical , pointer :: do_sat_adj
+     logical , pointer :: do_inline_mp
      logical , pointer :: do_f3d
      logical , pointer :: no_dycore
      logical , pointer :: convert_ke
@@ -350,6 +351,7 @@ module fv_control_mod
      logical , pointer :: nudge_ic
      logical , pointer :: ncep_ic
      logical , pointer :: nggps_ic
+   logical , pointer :: hrrrv3_ic
      logical , pointer :: ecmwf_ic
      logical , pointer :: gfs_phil
      logical , pointer :: agrid_vel_rst
@@ -391,8 +393,13 @@ module fv_control_mod
      integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, nsponge, ioffset, joffset
      real, pointer :: s_weight, update_blend
 
+     character(len=16), pointer :: restart_resolution
      integer, pointer :: layout(:), io_layout(:)
-
+     logical, pointer :: write_coarse_restart_files
+     logical, pointer :: write_coarse_diagnostics
+     logical, pointer :: write_only_coarse_intermediate_restarts
+     logical, pointer :: write_coarse_agrid_vel_rst
+     logical, pointer :: write_coarse_dgrid_vel_rst
      !!!!!!!!!! END POINTERS !!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
      this_grid = -1 ! default
@@ -404,7 +411,16 @@ module fv_control_mod
      call read_namelist_fv_nest_nml
 
      ! 2. Set up Atm and PElists
-
+     do n=2,MAX_NNEST
+        if (tile_coarse(n) > 0) then
+           if (tile_coarse(n)<=num_tile_top) then
+              grid_coarse(n)=1
+           else
+              grid_coarse(n)=tile_coarse(n) - num_tile_top + 1
+           endif
+        endif
+     enddo
+     
      ngrids = 1
      do n=2,MAX_NNEST
         if (grid_coarse(n) <= 0) then
@@ -585,6 +601,7 @@ module fv_control_mod
 
      if (Atm(this_grid)%neststruct%twowaynest) all_twowaynest(this_grid) = 1
      call mpp_max(all_twowaynest, ngrids, global_pelist)
+
      ntiles_nest_all = 0
      do n=1,ngrids
         if (n/=this_grid) then
@@ -606,6 +623,8 @@ module fv_control_mod
            icount_coarse(n) = all_npx(n)/nest_refine(n)
            jcount_coarse(n) = all_npy(n)/nest_refine(n)
            nest_level(n) = nest_level(grid_coarse(n)) + 1
+           Atm(n)%neststruct%nlevel=nest_level(n)
+           if (n==ngrids) Atm(:)%neststruct%num_nest_level=nest_level(ngrids)
         else
            tile_fine(n) = all_ntiles(n)
            nest_level(n) = 0
@@ -623,7 +642,7 @@ module fv_control_mod
      endif
 
      ! 5. domain_decomp()
-     call domain_decomp(Atm(this_grid)%flagstruct%npx,Atm(this_grid)%flagstruct%npy,Atm(this_grid)%flagstruct%ntiles,&
+     call domain_decomp(this_grid,Atm(this_grid)%flagstruct%npx,Atm(this_grid)%flagstruct%npy,Atm(this_grid)%flagstruct%ntiles,&
           Atm(this_grid)%flagstruct%grid_type,Atm(this_grid)%neststruct%nested, &
           Atm(this_grid)%layout,Atm(this_grid)%io_layout,Atm(this_grid)%bd,Atm(this_grid)%tile_of_mosaic, &
           Atm(this_grid)%gridstruct%square_domain,Atm(this_grid)%npes_per_tile,Atm(this_grid)%domain, &
@@ -743,6 +762,10 @@ module fv_control_mod
 !!$     Atm(this_grid)%ua = too_big
 !!$     Atm(this_grid)%va = too_big
 !!$
+!!$     Atm(this_grid)%inline_mp%prer = too_big
+!!$     Atm(this_grid)%inline_mp%prei = too_big
+!!$     Atm(this_grid)%inline_mp%pres = too_big
+!!$     Atm(this_grid)%inline_mp%preg = too_big
 
      !Initialize restart
      call fv_restart_init()
@@ -752,6 +775,7 @@ module fv_control_mod
 !         enddo
 !         if(is_master()) write(*,*) "Hybrid sigma-p coordinate has been reset"
 !     endif
+
 
 
    contains
@@ -798,6 +822,7 @@ module fv_control_mod
        RF_fast                       => Atm%flagstruct%RF_fast
        consv_am                      => Atm%flagstruct%consv_am
        do_sat_adj                    => Atm%flagstruct%do_sat_adj
+       do_inline_mp                  => Atm%flagstruct%do_inline_mp
        do_f3d                        => Atm%flagstruct%do_f3d
        no_dycore                     => Atm%flagstruct%no_dycore
        convert_ke                    => Atm%flagstruct%convert_ke
@@ -887,6 +912,7 @@ module fv_control_mod
        nudge_ic                      => Atm%flagstruct%nudge_ic
        ncep_ic                       => Atm%flagstruct%ncep_ic
        nggps_ic                      => Atm%flagstruct%nggps_ic
+       hrrrv3_ic                     => Atm%flagstruct%hrrrv3_ic
        ecmwf_ic                      => Atm%flagstruct%ecmwf_ic
        gfs_phil                      => Atm%flagstruct%gfs_phil
        agrid_vel_rst                 => Atm%flagstruct%agrid_vel_rst
@@ -935,6 +961,12 @@ module fv_control_mod
 
        layout                        => Atm%layout
        io_layout                     => Atm%io_layout
+
+       write_coarse_restart_files    => Atm%coarse_graining%write_coarse_restart_files
+       write_coarse_diagnostics      => Atm%coarse_graining%write_coarse_diagnostics
+       write_only_coarse_intermediate_restarts => Atm%coarse_graining%write_only_coarse_intermediate_restarts
+       write_coarse_agrid_vel_rst    => Atm%coarse_graining%write_coarse_agrid_vel_rst
+       write_coarse_dgrid_vel_rst    => Atm%coarse_graining%write_coarse_dgrid_vel_rst
      end subroutine set_namelist_pointers
 
 
@@ -962,7 +994,7 @@ module fv_control_mod
      subroutine read_namelist_fv_nest_nml
 
        integer :: f_unit, ios, ierr
-       namelist /fv_nest_nml/ grid_pes, grid_coarse, tile_coarse, nest_refine, &
+       namelist /fv_nest_nml/ grid_pes, num_tile_top, tile_coarse, nest_refine, &
             nest_ioffsets, nest_joffsets, p_split
 
 #ifdef INTERNAL_FILE_NML
@@ -1397,8 +1429,8 @@ module fv_control_mod
             use_logp, p_fac, a_imp, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, &
             do_schmidt, do_cube_transform, &
             hord_mt, hord_vt, hord_tm, hord_dp, hord_tr, shift_fac, stretch_fac, target_lat, target_lon, &
-            kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_f3d, &
-            external_ic, read_increment, ncep_ic, nggps_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
+            kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_land, nudge, do_sat_adj, do_inline_mp, do_f3d, &
+            external_ic, read_increment, ncep_ic, nggps_ic, hrrrv3_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
             external_eta, res_latlon_dynamics, res_latlon_tracers, scale_z, w_max, z_min, lim_fac, &
             dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, &
             warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
@@ -1415,7 +1447,12 @@ module fv_control_mod
             nestbctype, nestupdate, nsponge, s_weight, &
             check_negative, nudge_ic, halo_update_type, gfs_phil, agrid_vel_rst,     &
             do_uni_zfull, adj_mass_vmr, fac_n_spl, fhouri, update_blend, regional, bc_update_interval,  &
-            regional_bcs_from_gsi, write_restart_with_bcs, nrows_blend
+            regional_bcs_from_gsi, write_restart_with_bcs, nrows_blend,  &
+            write_coarse_restart_files,&
+            write_coarse_diagnostics,&
+            write_only_coarse_intermediate_restarts, &
+            write_coarse_agrid_vel_rst, write_coarse_dgrid_vel_rst
+            
 
 #ifdef INTERNAL_FILE_NML
        ! Read FVCORE namelist
@@ -1552,6 +1589,7 @@ module fv_control_mod
        upoff = Atm(this_grid)%neststruct%upoff
 
        do n=2,ngrids
+          !write(*,'(I, A, 4I)') mpp_pe(), 'SETUP_UPDATE_REGIONS 0: ', mpp_pe(), tile_coarse(n), Atm(this_grid)%global_tile
           if (tile_coarse(n) == Atm(this_grid)%global_tile) then
 
              isu = nest_ioffsets(n)
@@ -1619,10 +1657,12 @@ module fv_control_mod
 
     do n = 1, ngrids
        call deallocate_fv_atmos_type(Atm(n))
+       call deallocate_coarse_restart_type(Atm(n)%coarse_graining%restart)
     end do
 
 
  end subroutine fv_end
 !-------------------------------------------------------------------------------
+
 
 end module fv_control_mod

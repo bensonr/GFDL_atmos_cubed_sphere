@@ -40,11 +40,10 @@
 !   </tr>
 !   <tr>
 !     <td>fv_mp_mod</td>
-!     <td>ng,fill_corners, XDir, YDir</td>
+!     <td>fill_corners, XDir, YDir</td>
 !   </tr>
 ! </table>
 
- use fv_mp_mod,         only: ng
  use tp_core_mod,       only: fv_tp_2d, pert_ppm, copy_corners
  use fv_mp_mod, only: fill_corners, XDir, YDir
  use fv_arrays_mod, only: fv_grid_type, fv_grid_bounds_type, fv_flags_type
@@ -673,12 +672,12 @@
 !!! TO DO: separate versions for nesting and for cubed-sphere
         if (bounded_domain) then
            do j=jsd,jed
-              do i=is-1,ie+2
+              do i=is,ie+1
                  ut(i,j) = ( uc(i,j) - 0.25 * cosa_u(i,j) *     &
                       (vc(i-1,j)+vc(i,j)+vc(i-1,j+1)+vc(i,j+1)))*rsin_u(i,j)
               enddo
            enddo
-           do j=js-1,je+2
+           do j=js,je+1
               do i=isd,ied
                  vt(i,j) = ( vc(i,j) - 0.25 * cosa_v(i,j) *     &
                       (uc(i,j-1)+uc(i+1,j-1)+uc(i,j)+uc(i+1,j)))*rsin_v(i,j)
@@ -1131,7 +1130,7 @@
       endif
 
       call ytp_v(is,ie,js,je,isd,ied,jsd,jed, vb, u, v, ub, hord_mt, gridstruct%dy, gridstruct%rdy, &
-                 npx, npy, flagstruct%grid_type, flagstruct%lim_fac, bounded_domain)
+                 npx, npy, flagstruct%grid_type, bounded_domain, flagstruct%lim_fac)
 
       do j=js,je+1
          do i=is,ie+1
@@ -1188,7 +1187,7 @@
       endif
 
       call xtp_u(is,ie,js,je, isd,ied,jsd,jed, ub, u, v, vb, hord_mt, gridstruct%dx, gridstruct%rdx, &
-                 npx, npy, flagstruct%grid_type, flagstruct%lim_fac, bounded_domain)
+                 npx, npy, flagstruct%grid_type, bounded_domain, flagstruct%lim_fac)
 
       do j=js,je+1
          do i=is,ie+1
@@ -1733,7 +1732,7 @@
     is2 = max(2,is); ie1 = min(npx-1,ie+1)
  end if
 
-    if (flagstruct%grid_type==4) then
+    if (flagstruct%grid_type > 3) then
         do j=js-1,je+2
            do i=is-2,ie+2
               uf(i,j) = u(i,j)*dyc(i,j)
@@ -1844,7 +1843,7 @@
 
  divg_d = 1.e25
 
-    if (flagstruct%grid_type==4) then
+    if (flagstruct%grid_type > 3) then
         do j=jsd,jed
            do i=isd,ied
               uf(i,j) = u(i,j)*dyc(i,j)
@@ -1998,7 +1997,7 @@ end subroutine divergence_corner_nest
  end subroutine smag_corner
 
 
- subroutine xtp_u(is,ie,js,je,isd,ied,jsd,jed,c, u, v, flux, iord, dx, rdx, npx, npy, grid_type, lim_fac,bounded_domain)
+ subroutine xtp_u(is,ie,js,je,isd,ied,jsd,jed,c, u, v, flux, iord, dx, rdx, npx, npy, grid_type, bounded_domain, lim_fac)
 
  integer, intent(in):: is,ie,js,je, isd,ied,jsd,jed
  real, INTENT(IN)::   u(isd:ied,jsd:jed+1)
@@ -2179,7 +2178,6 @@ end subroutine divergence_corner_nest
                  flux(i,j) = u(i,j)
              endif
              if ( hi5(i) ) flux(i,j) = flux(i,j) + fx0(i)
-
           enddo
 
      else    !  iord=5,6,7
@@ -2356,7 +2354,7 @@ end subroutine divergence_corner_nest
  end subroutine xtp_u
 
 
- subroutine ytp_v(is,ie,js,je,isd,ied,jsd,jed, c, u, v, flux, jord, dy, rdy, npx, npy, grid_type, lim_fac, bounded_domain)
+ subroutine ytp_v(is,ie,js,je,isd,ied,jsd,jed, c, u, v, flux, jord, dy, rdy, npx, npy, grid_type, bounded_domain, lim_fac)
  integer, intent(in):: is,ie,js,je, isd,ied,jsd,jed
  integer, intent(IN):: jord
  real, INTENT(IN)  ::   u(isd:ied,jsd:jed+1)
@@ -2464,7 +2462,6 @@ end subroutine divergence_corner_nest
          b0(i,j) = bl(i,j) + br(i,j)
       enddo
    enddo
-
 
    if ( jord==1 ) then    ! Perfectly linear
 
@@ -2817,11 +2814,10 @@ end subroutine ytp_v
 !There is a limit to how far this routine can fill uc and vc in the
 ! halo, and so either mpp_update_domains or some sort of boundary
 !  routine (extrapolation, outflow, interpolation from a bounded_domain grid)
-
 !   is needed after c_sw is completed if these variables are needed
 !    in the halo
  subroutine d2a2c_vect(u, v, ua, va, uc, vc, ut, vt, dord4, gridstruct, &
-          bd, npx, npy, bounded_domain, grid_type)
+                       bd, npx, npy, bounded_domain, grid_type)
   type(fv_grid_bounds_type), intent(IN) :: bd
   logical, intent(in):: dord4
   real, intent(in) ::  u(bd%isd:bd%ied,bd%jsd:bd%jed+1)
@@ -2878,7 +2874,7 @@ end subroutine ytp_v
   utmp(:,:) = big_number
   vtmp(:,:) = big_number
 
- if ( bounded_domain ) then
+ if ( bounded_domain) then
 
      do j=jsd+1,jed-1
         do i=isd,ied

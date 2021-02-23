@@ -437,7 +437,6 @@ contains
           if( is_master() ) write(*,*) 'Back from read_da_inc',pt_r(i,j,k)
        endif
 !      ====== end PJP added DA functionailty======
-
        call rst_remap(npz_rst, npz, isc, iec, jsc, jec, isd, ied, jsd, jed, ntracers, ntprog,      &
                       delp_r,      u_r,      v_r,      w_r,      delz_r,      pt_r,  q_r,  qdiag_r,&
                       Atm(n)%delp, Atm(n)%u, Atm(n)%v, Atm(n)%w, Atm(n)%delz, Atm(n)%pt, Atm(n)%q, &
@@ -463,6 +462,7 @@ contains
 
   end subroutine  remap_restart
 
+
 !>@brief The subroutine 'fv_io_register_nudge_restart' registers restarts for SST
 !! fields used in HiRAM.
 !>@note This option is currently not supported.
@@ -481,6 +481,7 @@ contains
     endif
 
   end subroutine  fv_io_register_nudge_restart
+
 
 !>@brief The subroutine 'fv_io_register_restart' registers model restart fields.
   subroutine  fv_io_register_restart(fv_domain,Atm)
@@ -604,8 +605,10 @@ contains
 
   end subroutine  fv_io_register_restart
 
+
   !>@brief The subroutine 'fv_io_write_restart' writes restart files.
   subroutine  fv_io_write_restart(Atm, timestamp)
+
     type(fv_atmos_type),        intent(inout) :: Atm
     character(len=*), optional, intent(in) :: timestamp
 

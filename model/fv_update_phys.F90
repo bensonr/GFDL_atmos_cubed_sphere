@@ -99,7 +99,7 @@ module fv_update_phys_mod
   use tracer_manager_mod, only: get_tracer_index, adjust_mass, get_tracer_names
   use fv_mp_mod,          only: start_group_halo_update, complete_group_halo_update
   use fv_mp_mod,          only: group_halo_update_type
-  use fv_arrays_mod,      only: fv_flags_type, fv_nest_type, R_GRID, phys_diag_type
+  use fv_arrays_mod,      only: fv_flags_type, fv_nest_type, R_GRID, phys_diag_type, nudge_diag_type
   use boundary_mod,       only: nested_grid_BC
   use boundary_mod,       only: extrapolation_BC
   use fv_eta_mod,         only: get_eta_level
@@ -127,6 +127,7 @@ module fv_update_phys_mod
 
   public :: fv_update_phys, del2_phys
   real,parameter:: con_cp  = cp_air
+  real, parameter :: tmax = 330
 
   contains
 
@@ -135,7 +136,8 @@ module fv_update_phys_mod
                               ak, bk, phis, u_srf, v_srf, ts, delz, hydrostatic,  &
                               u_dt, v_dt, t_dt, moist_phys, Time, nudge,    &
                               gridstruct, lona, lata, npx, npy, npz, flagstruct,  &
-                              neststruct, bd, domain, ptop, phys_diag, q_dt)
+                              neststruct, bd, domain, ptop, phys_diag, &
+                              nudge_diag, q_dt)
     real, intent(in)   :: dt, ptop
     integer, intent(in):: is,  ie,  js,  je, ng
     integer, intent(in):: isd, ied, jsd, jed
@@ -164,6 +166,7 @@ module fv_update_phys_mod
     real, intent(inout):: t_dt(is:ie,js:je,npz)
     real, intent(inout), optional :: q_dt(is:ie,js:je,npz,nq)
     type(phys_diag_type), intent(inout) :: phys_diag
+    type(nudge_diag_type), intent(inout) :: nudge_diag
 
 ! Saved Bottom winds for GFDL Physics Interface
     real, intent(out), dimension(is:ie,js:je):: u_srf, v_srf, ts
@@ -547,12 +550,10 @@ module fv_update_phys_mod
                   enddo
                enddo
             enddo
-        endif
 #elif defined (CLIMATE_NUDGE)
 !--------------------------------------------
 ! All fields will be updated; tendencies added
 !--------------------------------------------
-        call fv_climate_nudge ( Time, dt, is, ie, js, je, npz, pfull,    &
              lona(is:ie,js:je), lata(is:ie,js:je), phis(is:ie,js:je), &
              ptop, ak, bk, &
              ps(is:ie,js:je), ua(is:ie,js:je,:), va(is:ie,js:je,:), &

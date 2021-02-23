@@ -1,4 +1,3 @@
-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -167,8 +166,8 @@ contains
     real, intent(inout) :: pt(  is_in:ie_in  ,js_in:je_in  ,npz_in)  ! temperature (K)
     real, intent(inout) :: q(   is_in:ie_in  ,js_in:je_in  ,npz_in, nq)  !
     real, intent(inout) :: delz(isc_in:iec_in  ,jsc_in:jec_in  ,npz_in)  !
-    ! local
 
+    ! local
     real :: deg2rad
     character(len=128) :: fname
     real(kind=4), allocatable:: wk1(:), wk2(:,:), wk3(:,:,:)

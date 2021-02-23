@@ -1,4 +1,3 @@
-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -444,7 +443,6 @@ CONTAINS
                             dm, pm2, pem, w2, dz2, pt(is1:ie1,j,1:km), ws(is1,j), p_fac)
       endif
 
-
       do k=2,km+1
          do i=is1, ie1
             pef(i,j,k) = pe2(i,k) + pem(i,k)  ! add hydrostatic full-component
@@ -468,7 +466,7 @@ CONTAINS
 
 
 !>GFDL - This routine will not give absoulte reproducibility when compiled with -fast-transcendentals.
-!! GFDL - It is now inside of nh_core.F90 and being compiled without -fast-transcendentals.
+!!GFDL - It is now inside of nh_core.F90 and being compiled without -fast-transcendentals.
   subroutine Riem_Solver3test(ms, dt,   is,   ie,   js, je, km, ng,    &
                           isd, ied, jsd, jed, akap, cappa, cp,     &
 #ifdef MULTI_GASES
@@ -582,7 +580,6 @@ CONTAINS
          enddo
       enddo
 
-
       if ( a_imp < -0.999 ) then
            call SIM3p0_solver(dt, is, ie, km, rdgas, gama, akap, &
 #ifdef MULTI_GASES
@@ -620,7 +617,6 @@ CONTAINS
                            pm2, pem, w2, dz2, pt(is:ie,j,1:km), ws(is,j), &
                            a_imp, p_fac, scale_m)
       endif
-
 
       do k=1, km
          do i=is, ie
@@ -673,6 +669,7 @@ CONTAINS
 2000  continue
 
   end subroutine Riem_Solver3test
+
 
   subroutine imp_diff_w(j, is, ie, js, je, ng, km, cd, delz, ws, w, w3)
   integer, intent(in) :: j, is, ie, js, je, km, ng

@@ -1,4 +1,3 @@
-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -1864,6 +1863,18 @@ contains
  enddo
 
  endif
+
+  if ( present(check_negative) ) then
+  if ( check_negative ) then
+     call prt_negative('Temperature', pt, is, ie, js, je, ng, kbot, 165.)
+     call prt_negative('sphum',   qv, is, ie, js, je, ng, kbot, -1.e-8)
+     call prt_negative('liq_wat', ql, is, ie, js, je, ng, kbot, -1.e-7)
+     call prt_negative('rainwat', qr, is, ie, js, je, ng, kbot, -1.e-7)
+     call prt_negative('ice_wat', qi, is, ie, js, je, ng, kbot, -1.e-7)
+     call prt_negative('snowwat', qs, is, ie, js, je, ng, kbot, -1.e-7)
+     call prt_negative('graupel', qg, is, ie, js, je, ng, kbot, -1.e-7)
+  endif
+  endif
 
  end subroutine neg_adj3
 

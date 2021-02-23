@@ -758,10 +758,7 @@
 ! Make unit vectors for the coordinate extension:
 !-------------------------------------------------------------
   endif
-
-!xxxx
-!!!  should we insert .not.regional into the following loops alongside .not.nested ????
-!xxxx
+ 
   do j=jsd,jed+1
      if ((j==1 .OR. j==npy) .and. .not. Atm%gridstruct%bounded_domain) then
         do i=isd,ied
@@ -1453,7 +1450,7 @@
  if ( is_master() ) then
       p1(1) = lamda(1,1);    p1(2) = theta(1,1)
       p2(1) = lamda(2,1);    p2(2) = theta(2,1)
-      write(*,*) 'Gird distance at face edge (km)=',great_circle_dist( p1, p2, radius )   ! earth radius is assumed
+      write(*,*) 'Grid distance at face edge (m)=',great_circle_dist( p1, p2, radius )   ! earth radius is assumed
  endif
 
  end subroutine gnomonic_ed
@@ -3563,8 +3560,7 @@
  end subroutine update_dwinds_phys
 
 !>@brief The subroutine 'update2d_dwinds_phys' transforms the wind tendencies
-!from
-!! the A grid to the D grid for the final update.
+!from the A grid to the D grid for the final update.
  subroutine update2d_dwinds_phys(is, ie, js, je, isd, ied, jsd, jed, dt, u_dt, v_dt, u, v, gridstruct, npx, npy, npz, domain)
 
 ! Purpose; Transform wind tendencies on A grid to D grid for the final update

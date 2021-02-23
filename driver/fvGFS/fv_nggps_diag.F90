@@ -648,7 +648,7 @@ contains
     if ( rainwat > 0 .and. id_dbz>0) then
       call dbzcalc(Atm(n)%q, Atm(n)%pt, Atm(n)%delp, Atm(n)%peln, Atm(n)%delz, &
                    wk, wk2, allmax, Atm(n)%bd, npzo, Atm(n)%ncnst, Atm(n)%flagstruct%hydrostatic, &
-                   zvir, .false., .false., .false., .true. ) ! GFDL MP has constant N_0 intercept
+                   zvir, .false., .false., .false., .true., Atm(n)%flagstruct%do_inline_mp ) ! GFDL MP has constant N_0 intercept
       call store_data(id_dbz, wk, Time, kstt_dbz, kend_dbz)
     endif
 

@@ -467,11 +467,16 @@ module fv_eta_mod
          enddo
 
       case (50)
-         ! *Very-low top: for idealized super-cell simulation:
-         ptop = 50.e2
-         pint = 250.E2
-         stretch_fac = 1.03
-         auto_routine = 1
+         ! ! *Very-low top: for idealized super-cell simulation:
+         ! ptop = 50.e2
+         ! pint = 250.E2
+         ! stretch_fac = 1.03
+         ! auto_routine = 1
+         ks = 19
+         do k=1,km+1
+            ak(k) = a50(k)
+            bk(k) = b50(k)
+         enddo
 
       case (51)
          if (trim(npz_type) == 'lowtop') then
