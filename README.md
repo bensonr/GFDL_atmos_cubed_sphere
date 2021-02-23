@@ -22,7 +22,6 @@ The top level directory structure groups source code and input files as follow:
 | ```model/```         | contains the source code for core of the FV3 dyanmical core |
 | ```driver/```        | contains drivers used by different models/modeling systems |
 | ```tools/```         | contains source code of tools used within the core |
-| ```GFDL_tools/```    | contains source code of tools specific to GFDL models |
 | ```docs/```          | contains documentation for the FV3 dynamical core |
 
 # Disclaimer
