@@ -331,7 +331,7 @@ contains
 !-------------------------------------------------------------------------------
 ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv !
 !>@brief The subroutine 'domain_decomp' sets up the domain decomposition.
-      subroutine domain_decomp(npx,npy,nregions,grid_type,nested,layout,io_layout,bd,tile,square_domain,&
+      subroutine domain_decomp(grid_num,npx,npy,nregions,grid_type,nested,layout,io_layout,bd,tile,square_domain,&
            npes_per_tile,domain,domain_for_coupler,num_contact,pelist)
 
          integer, intent(IN)  :: grid_num
