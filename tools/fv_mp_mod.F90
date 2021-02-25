@@ -218,12 +218,8 @@
       INTERFACE mp_reduce_sum
         MODULE PROCEDURE mp_reduce_sum_r4
         MODULE PROCEDURE mp_reduce_sum_r4_1d
-        MODULE PROCEDURE mp_reduce_sum_r4_1darr
-        MODULE PROCEDURE mp_reduce_sum_r4_2darr
         MODULE PROCEDURE mp_reduce_sum_r8
         MODULE PROCEDURE mp_reduce_sum_r8_1d
-        MODULE PROCEDURE mp_reduce_sum_r8_1darr
-        MODULE PROCEDURE mp_reduce_sum_r8_2darr
       END INTERFACE
 
       !> The interface 'mp_gather contains routines that call SPMD Gather.
