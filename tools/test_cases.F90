@@ -5692,7 +5692,9 @@ end subroutine terminator_tracers
 
 
  subroutine SuperCell_Sounding(km, ps, pk1, tp, qp)
+#ifndef GFS_PHYS
  use gfdl_cloud_microphys_mod, only: wqsat_moist, qsmith_init, qs_blend
+#endif
 ! Morris Weisman & J. Klemp 2002 sounding
 ! Output sounding on pressure levels:
  integer, intent(in):: km

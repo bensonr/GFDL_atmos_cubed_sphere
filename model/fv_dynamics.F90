@@ -306,7 +306,6 @@ contains
       nq = nq_tot - flagstruct%dnats
       nr = nq_tot - flagstruct%dnrts
       rdg = -rdgas * agrav
-      allocate ( dp1(isd:ied, jsd:jed, 1:npz) )
 
       ! Call CCPP timestep init
       call ccpp_physics_timestep_init(cdata, suite_name=trim(ccpp_suite), group_name="fast_physics", ierr=ierr)
@@ -317,17 +316,9 @@ contains
          CCPP_interstitial%out_dt = (idiag%id_mdt > 0)
       end if
 
-#ifdef MOIST_CAPPA
 #ifdef MULTI_GASES
       allocate ( kapad(isd:ied, jsd:jed, npz) )
       call init_ijk_mem(isd,ied, jsd,jed, npz, kapad, kappa)
-#else
-      allocate ( cappa(isd:ied,jsd:jed,npz) )
-      call init_ijk_mem(isd,ied, jsd,jed, npz, cappa, 0.)
-#endif
-#else
-      allocate ( cappa(isd:isd,jsd:jsd,1) )
-      cappa = 0.
 #endif
       !We call this BEFORE converting pt to virtual potential temperature,
       !since we interpolate on (regular) temperature rather than theta.
@@ -591,7 +582,6 @@ contains
   mdt = bdt / real(k_split)
 
   if ( idiag%id_mdt > 0 .and. (.not. do_adiabatic_init) ) then
-       allocate ( dtdt_m(is:ie,js:je,npz) )
 !$OMP parallel do default(none) shared(is,ie,js,je,npz,dtdt_m)
        do k=1,npz
           do j=js,je
@@ -819,7 +809,6 @@ contains
        enddo
 !      call prt_mxm('Fast DTDT (deg/Day)', dtdt_m, is, ie, js, je, 0, npz, 1., gridstruct%area_64, domain)
        used = send_data(idiag%id_mdt, dtdt_m, fv_time)
-       deallocate ( dtdt_m )
   endif
 
   if( nwat==6 ) then
@@ -954,8 +943,6 @@ contains
 #ifdef MULTI_GASES
   deallocate(kapad)
 #endif
-  deallocate(dp1)
-  if (allocated(cappa)) deallocate(cappa)
 
   if ( flagstruct%fv_debug ) then
      call prt_mxm('UA', ua, is, ie, js, je, ng, npz, 1., gridstruct%area_64, domain)

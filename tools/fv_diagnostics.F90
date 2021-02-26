@@ -141,7 +141,9 @@ module fv_diagnostics_mod
  use sat_vapor_pres_mod, only: compute_qs, lookup_es
 
  use fv_arrays_mod, only: max_step
+#ifndef GFS_PHYS
  use gfdl_cloud_microphys_mod, only: wqs1, qsmith_init, c_liq
+#endif
 
  use fv_diag_column_mod, only: fv_diag_column_init, sounding_column, debug_column
 
@@ -209,7 +211,7 @@ module fv_diagnostics_mod
  integer :: yr_init, mo_init, dy_init, hr_init, mn_init, sec_init
  integer :: id_dx, id_dy
 
- real              :: vrange(2), vsrange(2), wrange(2), trange(2), slprange(2), rhrange(2)
+ real              :: vrange(2), vsrange(2), wrange(2), trange(2), slprange(2), rhrange(2), skrange(2)
 
  ! integer :: id_d_grid_ucomp, id_d_grid_vcomp   ! D grid winds
  ! integer :: id_c_grid_ucomp, id_c_grid_vcomp   ! C grid winds
@@ -3678,9 +3680,9 @@ contains
              do i=isc,iec
                 wk(i,j,k) =  (Atm(n)%pt(i,j,k)*exp(-kappa*log(-Atm(n)%delp(i,j,k)/(Atm(n)%delz(i,j,k)*grav)*rdgas*          &
 #ifdef MULTI_GASES
-                      Atm(n)%pt(i,j,k)*virq(Atm(n)%q(i,j,k,1:num_gas)))) - idiag%pt1(k)) * pk0
+                      Atm(n)%pt(i,j,k)*virq(Atm(n)%q(i,j,k,1:num_gas)))) - pt1(k)) * pk0
 #else
-                      Atm(n)%pt(i,j,k)*(1.+zvir*Atm(n)%q(i,j,k,sphum)))) - idiag%pt1(k)) * pk0
+                      Atm(n)%pt(i,j,k)*(1.+zvir*Atm(n)%q(i,j,k,sphum)))) - pt1(k)) * pk0
 #endif
 !                 Atm(n)%pkz(i,j,k) = exp(kappa*log(-Atm(n)%delp(i,j,k)/(Atm(n)%delz(i,j,k)*grav)*rdgas*          &
 !                      Atm(n)%pt(i,j,k)*(1.+zvir*Atm(n)%q(i,j,k,sphum))))
@@ -5267,7 +5269,7 @@ contains
 
 !>@brief The subroutine 'pv_entropy' computes potential vorticity.
 !>@author Shian-Jiann Lin
- subroutine pv_entropy(is, ie, js, je, ng, km, vort, f_d, pt, pkz, delp, grav)
+ subroutine pv_entropy(is, ie, js, je, ng, km, vort, f_d, pt, pkz, delp, grav, te)
 
 ! !INPUT PARAMETERS:
    integer, intent(in)::  is, ie, js, je, ng, km
@@ -5886,7 +5888,7 @@ end subroutine eqv_pot
    real(kind=R_GRID), parameter:: vconh =   vcong
    real(kind=R_GRID), parameter:: normr = 25132741228.7183
    real(kind=R_GRID), parameter:: normg =  5026548245.74367
-   real(kind=R_GRID), parameter:: normh =  pi*rhoh*rnzh
+!   real(kind=R_GRID), parameter:: normh =  pi*rhoh*rnzh
    real(kind=R_GRID), parameter:: norms =   942477796.076938
 
    !Constants for variable intercepts

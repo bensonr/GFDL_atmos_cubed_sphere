@@ -198,7 +198,8 @@ use fv_regional_mod,    only: start_regional_restart, read_new_bc_data, &
                               a_step, p_step, current_time_in_seconds
 
 use mpp_domains_mod, only:  mpp_get_data_domain, mpp_get_compute_domain
-use gfdl_mp_mod,        only: gfdl_mp_init, gfdl_mp_end
+use fv_grid_utils_mod,  only: g_sum
+!use gfdl_mp_mod,        only: gfdl_mp_init, gfdl_mp_end
 use coarse_graining_mod, only: coarse_graining_init
 use coarse_grained_diagnostics_mod, only: fv_coarse_diag_init, fv_coarse_diag
 use coarse_grained_restart_files_mod, only: fv_coarse_restart_init
@@ -236,7 +237,7 @@ character(len=20)   :: mod_name = 'fvGFS/atmosphere_mod'
 
 !---- private data ----
   type (time_type) :: Time_step_atmos
-  public Atm
+  public Atm, mygrid
 
   !These are convenience variables for local use only, and are set to values in Atm%
   real    :: dt_atmos
@@ -263,7 +264,7 @@ character(len=20)   :: mod_name = 'fvGFS/atmosphere_mod'
   real, parameter:: w0_big = 60.  ! to prevent negative w-tracer diffusion
 
 !---dynamics tendencies for use in fv_subgrid_z and during fv_update_phys
-  real, allocatable, dimension(:,:,:)   :: u_dt, v_dt, t_dt
+  real, allocatable, dimension(:,:,:)   :: u_dt, v_dt, t_dt, qv_dt
   real, allocatable                     :: pref(:,:), dum1d(:)
 
   logical :: first_diag = .true.
@@ -333,6 +334,7 @@ contains
            Atm(mygrid)%coarse_graining%nx_coarse, &
            Atm(mygrid)%coarse_graining%strategy, &
            Atm(mygrid)%coarse_graining%domain)
+   endif
    endif
 
 !----- write version and namelist to log file -----
@@ -606,8 +608,10 @@ contains
    type(time_type),intent(in) :: Time
    integer :: n, psc, atmos_time_step
    integer :: k, w_diff, nt_dyn, n_split_loc, seconds, days
+   logical :: used
 
    type(time_type) :: atmos_time
+   real :: rdt
 
 !---- Call FV dynamics -----
 
@@ -891,6 +895,9 @@ contains
    type(domain2d), intent(out) :: fv_domain
    integer, intent(out) :: layout(2)
    logical, intent(out) :: regional
+   logical, intent(out) :: nested
+   integer, pointer, intent(out) :: pelist(:)
+
 !  returns the domain2d variable associated with the coupling grid
 !  note: coupling is done using the mass/temperature grid with no halos
 
@@ -1642,7 +1649,8 @@ contains
                          .true., Time_next, Atm(n)%flagstruct%nudge, Atm(n)%gridstruct,    &
                          Atm(n)%gridstruct%agrid(:,:,1), Atm(n)%gridstruct%agrid(:,:,2),   &
                          Atm(n)%npx, Atm(n)%npy, Atm(n)%npz, Atm(n)%flagstruct,            &
-                         Atm(n)%neststruct, Atm(n)%bd, Atm(n)%domain, Atm(n)%ptop, Atm(n)%phys_diag)
+                         Atm(n)%neststruct, Atm(n)%bd, Atm(n)%domain, &
+                         Atm(n)%ptop, Atm(n)%phys_diag, Atm(n)%nudge_diag)
        call timing_off('FV_UPDATE_PHYS')
    call mpp_clock_end (id_dynam)
 

@@ -292,7 +292,7 @@ contains
                              call timing_off('NGGPS_IC')
       elseif ( Atm%flagstruct%hrrrv3_ic ) then
                              call timing_on('HRRR_IC')
-           call get_hrrr_ic( Atm, fv_domain )
+           call get_hrrr_ic( Atm, fv_domain ,dt_atmos)
                              call timing_off('HRRR_IC')
       elseif ( Atm%flagstruct%ecmwf_ic ) then
            if( is_master() ) write(*,*) 'Calling get_ecmwf_ic'
@@ -722,7 +722,7 @@ contains
 !***  objects.  Then we need to read the first two regional BC files so the integration
 !***  can begin interpolating between those two times as the forecast proceeds.
 
-        if (n==1.and.Atm%flagstruct%regional) then     !<-- Select the parent regional domain.
+        if (Atm%flagstruct%regional) then     !<-- Select the parent regional domain.
 
           call start_regional_cold_start(Atm, dt_atmos, ak, bk, levp, &
                                          is, ie, js, je, &
@@ -923,7 +923,7 @@ contains
   end subroutine get_nggps_ic
 !------------------------------------------------------------------
 !------------------------------------------------------------------
-  subroutine get_hrrr_ic (Atm, fv_domain)
+  subroutine get_hrrr_ic (Atm, fv_domain, dt_atmos)
 !    read in data after it has been preprocessed with
 !    NCEP/EMC orography maker
 !
@@ -950,6 +950,7 @@ contains
 
       type(fv_atmos_type), intent(inout) :: Atm
       type(domain2d),      intent(inout) :: fv_domain
+      real, intent(IN) :: dt_atmos
 ! local:
       real, dimension(:), allocatable:: ak, bk
       real, dimension(:,:), allocatable:: wk2, ps, oro_g
@@ -1180,7 +1181,7 @@ contains
 
         if (Atm%flagstruct%regional) then     !<-- Select the parent regional domain.
 
-          call start_regional_cold_start(Atm, ak, bk, levp, &
+          call start_regional_cold_start(Atm, dt_atmos, ak, bk, levp, &
                                          is, ie, js, je, &
                                          isd, ied, jsd, jed )
         endif

@@ -1472,7 +1472,7 @@ contains
      if (Atm%coarse_graining%write_coarse_restart_files) &
           & call fv_io_write_restart_coarse(Atm)
      if (Atm%neststruct%nested) call fv_io_write_BCs(Atm)
-     if (Atm%flagstruct%write_restart_with_bcs .and. Atm%flagstruct%bounded_domain) &
+     if (Atm%flagstruct%write_restart_with_bcs .and. Atm%gridstruct%bounded_domain) &
           & call write_full_fields(Atm)
    endif
 
