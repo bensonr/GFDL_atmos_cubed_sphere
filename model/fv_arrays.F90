@@ -772,7 +772,6 @@ module fv_arrays_mod
                                   !< wave drag parameterization and for the land surface roughness than
                                   !< either computes internally. This has no effect on the representation of
                                   !< the terrain in the dynamics.
-   logical :: do_am4_remap = .false.   !< Use AM4 vertical remapping operators
 !--------------------------------------------------------------------------------------
 ! The following options are useful for NWP experiments using datasets on the lat-lon grid
 !--------------------------------------------------------------------------------------
@@ -1238,7 +1237,6 @@ module fv_arrays_mod
     real, _ALLOCATABLE :: sgh(:,:)      _NULL  ! Terrain standard deviation
     real, _ALLOCATABLE :: oro(:,:)      _NULL  ! land fraction (1: all land; 0: all water)
     real, _ALLOCATABLE :: ts(:,:)       _NULL  ! skin temperature (sst) from NCEP/GFS (K) -- tile
-    real, _ALLOCATABLE :: ci(:,:)       _NULL  ! sea-ice fraction from external file
 
 ! For stochastic kinetic energy backscatter (SKEB)
     real, _ALLOCATABLE :: diss_est(:,:,:) _NULL !< dissipation estimate taken from 'heat_source'
