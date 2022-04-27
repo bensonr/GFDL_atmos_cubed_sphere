@@ -53,7 +53,7 @@ module fv_iau_mod
                                  get_var1_double,     &
                                  get_var3_r4,         &
                                  get_var1_real, check_var_exists
-#ifdef GFS_PHYS
+#if defined (GFS_PHYS)
   use IPD_typedefs,        only: IPD_init_type, IPD_control_type, &
                                  kind_phys
 #endif
@@ -65,8 +65,8 @@ module fv_iau_mod
 
   private
 
-#ifndef GFS_PHYS
-    integer, parameter :: kind_phys = 8
+#if !defined (GFS_PHYS)
+    integer, parameter :: kind_phys = 4
 #endif
 
   real,allocatable::s2c(:,:,:)
@@ -113,7 +113,7 @@ module fv_iau_mod
 
   public iau_external_data_type
 
-#ifdef GFS_PHYS
+#if defined GFS_PHYS
   public IAU_initialize, getiauforcing
 
 contains
