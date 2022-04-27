@@ -5630,62 +5630,6 @@ end subroutine eqv_pot
 
   end subroutine compute_brn
 
- subroutine max_vorticity(is, ie, js, je, ng, km, zvir, sphum, delz, q, hydrostatic, &
-                          pt, peln, phis, grav, vort, maxvort, z_bot, z_top)
-   integer, intent(in):: is, ie, js, je, ng, km, sphum
-   real, intent(in):: grav, zvir, z_bot, z_top
-   real, intent(in), dimension(is-ng:ie+ng,js-ng:je+ng,km):: pt
-   real, intent(in), dimension(is:ie,js:je,km):: vort
-   real, intent(in):: delz(is:ie,js:je,km)
-   real, intent(in):: q(is-ng:ie+ng,js-ng:je+ng,km,*)
-   real, intent(in):: phis(is-ng:ie+ng,js-ng:je+ng)
-   real, intent(in):: peln(is:ie,km+1,js:je)
-   logical, intent(in):: hydrostatic
-   real, intent(inout), dimension(is:ie,js:je):: maxvort
-
-   real:: rdg
-   real, dimension(is:ie):: zh, dz, zh0
-   integer i, j, k,klevel
-   logical below(is:ie)
-
-   rdg = rdgas / grav
-
-   do j=js,je
-
-      do i=is,ie
-         zh(i) = 0.
-         below(i) = .true.
-         zh0(i) = 0.
-
-     K_LOOP:do k=km,1,-1
-            if ( hydrostatic ) then
-#ifdef MULTI_GASES
-                 dz(i) = rdg*pt(i,j,k)*virq(q(i,j,k,1:num_gas))*(peln(i,k+1,j)-peln(i,k,j))
-#else
-                 dz(i) = rdg*pt(i,j,k)*(1.+zvir*q(i,j,k,sphum))*(peln(i,k+1,j)-peln(i,k,j))
-#endif
-            else
-                 dz(i) = - delz(i,j,k)
-            endif
-            zh(i) = zh(i) + dz(i)
-            if (zh(i) <= z_bot ) continue
-            if (zh(i) > z_bot .and. below(i)) then
-               maxvort(i,j) = max(maxvort(i,j),vort(i,j,k))
-               below(i) = .false.
-            elseif ( zh(i) < z_top ) then
-               maxvort(i,j) = max(maxvort(i,j),vort(i,j,k))
-            else
-               maxvort(i,j) = max(maxvort(i,j),vort(i,j,k))
-               EXIT K_LOOP
-            endif
-         enddo K_LOOP
-!      maxvorthy1(i,j)=max(maxvorthy1(i,j),vort(i,j,km))
-      enddo  ! i-loop
-   enddo   ! j-loop
-
-
- end subroutine max_vorticity
-
  subroutine max_uh(is, ie, js, je, ng, km, zvir, sphum, uphmax,uphmin,   &
                   w, vort, delz, q, hydrostatic, pt, peln, phis, grav, z_bot, z_top)
 ! !INPUT PARAMETERS:
