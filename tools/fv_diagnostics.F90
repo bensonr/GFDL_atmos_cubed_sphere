@@ -3314,19 +3314,19 @@ contains
        enddo
        if ( id_t_plev_ave > 0) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%pt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4)
+             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%pt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4, ptop)
           enddo
           if (id_t_plev_ave > 0) used=send_data(id_t_plev_ave, a3, Time)
        endif
        if ( id_t_dt_gfdlmp_plev_ave > 0 ) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%inline_mp%t_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4)
+             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%inline_mp%t_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4, ptop)
           enddo
           if (id_t_dt_gfdlmp_plev_ave > 0) used=send_data(id_t_dt_gfdlmp_plev_ave, a3, Time)
        endif
        if ( id_t_dt_phys_plev_ave > 0 ) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%phys_diag%phys_t_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4)
+             call mappm(npz, Atm(n)%peln(isc:iec,1:npz+1,j), Atm(n)%phys_diag%phys_t_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 1, 4, ptop)
           enddo
           if (id_t_dt_phys_plev_ave > 0) used=send_data(id_t_dt_phys_plev_ave, a3, Time)
        endif
@@ -3337,19 +3337,19 @@ contains
        enddo
        if ( id_q_plev_ave > 0 ) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%q(isc:iec,j,:,sphum), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8)
+             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%q(isc:iec,j,:,sphum), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8, ptop)
           enddo
           if (id_q_plev_ave > 0) used=send_data(id_q_plev_ave, a3, Time)
        endif
        if ( id_qv_dt_gfdlmp_plev_ave > 0 ) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%inline_mp%qv_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8)
+             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%inline_mp%qv_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8, ptop)
           enddo
           if (id_qv_dt_gfdlmp_plev_ave > 0) used=send_data(id_qv_dt_gfdlmp_plev_ave, a3, Time)
        endif
        if ( id_qv_dt_phys_plev_ave > 0 ) then
           do j=jsc,jec
-             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%phys_diag%phys_qv_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8)
+             call mappm(npz, Atm(n)%pe(isc:iec,1:npz+1,j), Atm(n)%phys_diag%phys_qv_dt(isc:iec,j,:), nplev_ave, a2, a3(isc:iec,j,:), isc, iec, 0, 8, ptop)
           enddo
           if (id_qv_dt_phys_plev_ave > 0) used=send_data(id_qv_dt_phys_plev_ave, a3, Time)
        endif

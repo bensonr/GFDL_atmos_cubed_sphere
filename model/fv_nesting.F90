@@ -1187,7 +1187,7 @@ contains
 
          call mappm(npz_coarse, peln_lag, var_lagBC(istart:iend,j:j,:), &
                     npz, peln_eul, var_eulBC(istart:iend,j:j,:), &
-                    istart, iend, iv, kord)
+                    istart, iend, iv, kord, pe_eulBC(istart,j,1))
 
       enddo
 
@@ -1198,7 +1198,7 @@ contains
 
          call mappm(npz_coarse, pe_lagBC(istart:iend,j:j,:), var_lagBC(istart:iend,j:j,:), &
                     npz, pe_eulBC(istart:iend,j:j,:), var_eulBC(istart:iend,j:j,:), &
-                    istart, iend, iv, kord)
+                    istart, iend, iv, kord, pe_eulBC(istart,j,1))
          !!! NEED A FILLQ/FILLZ CALL HERE??
 
       enddo
@@ -2687,7 +2687,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          !remap_2d seems to have some bugs when doing logp remapping
          call    mappm(npz_src, peln_src, var_src(istart:iend,j:j,:), &
                        npz_dst, peln_dst, var_dst_unblend, &
-                       istart, iend, iv, kord)
+                       istart, iend, iv, kord, peln_dst(istart,1))
 
          do k=1,npz_dst
             bw1 = blend_wt(k)
@@ -2706,7 +2706,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
 
          call mappm(npz_src, pe_src, var_src(istart:iend,j:j,:), &
                     npz_dst, pe_dst, var_dst_unblend, &
-                    istart, iend, iv, kord)
+                    istart, iend, iv, kord, pe_dst(istart,1))
 
          do k=1,npz_dst
             bw1 = blend_wt(k)
@@ -2874,7 +2874,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
            qp(i,k) = q_dst(i,j,k,iq)
         enddo
         enddo
-        call mappm(kmd, pe0, qp, npz, pe1,  qn1, is,ie, 0, kord_tr) !not sure about indices
+        call mappm(kmd, pe0, qp, npz, pe1,  qn1, is,ie, 0, kord_tr, ptop) !not sure about indices
         do k=1,npz
            do i=istart,iend
               q_dst(i,j,k,iq) = qn1(i,k)
@@ -2889,7 +2889,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
         enddo
      enddo
      !Remap T using logp
-     call mappm(kmd, pn0(istart:iend,:), tp(istart:iend,:), npz, pn1(istart:iend,:), qn1(istart:iend,:), istart,iend, 1, abs(kord_tm))
+     call mappm(kmd, pn0(istart:iend,:), tp(istart:iend,:), npz, pn1(istart:iend,:), qn1(istart:iend,:), istart,iend, 1, abs(kord_tm), ptop)
 
      do k=1,npz
         wt1 = blend_wt(k)
@@ -2907,7 +2907,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
         enddo
         !Remap w using p
         !Using iv == -1 instead of -2
-        call mappm(kmd, pe0(istart:iend,:), tp(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_wz)
+        call mappm(kmd, pe0(istart:iend,:), tp(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_wz, ptop)
 
         do k=1,npz
            wt1 = blend_wt(k)
@@ -2997,7 +2997,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          enddo
       enddo
       qn1 = 0.
-      call mappm(kmd, pe0(istart:iend,:), qt(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_mt)
+      call mappm(kmd, pe0(istart:iend,:), qt(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_mt, ptop)
       do k=1,npz
          wt1 = blend_wt(k)
          wt2 = 1. - wt1
@@ -3047,7 +3047,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          enddo
       enddo
       qn1 = 0.
-      call mappm(kmd, pe0(istart:iend_v+1,:), qt(istart:iend_v+1,:), npz, pe1(istart:iend_v+1,:), qn1(istart:iend_v+1,:), istart,iend_v+1, -1, kord_mt)
+      call mappm(kmd, pe0(istart:iend_v+1,:), qt(istart:iend_v+1,:), npz, pe1(istart:iend_v+1,:), qn1(istart:iend_v+1,:), istart,iend_v+1, -1, kord_mt, ptop)
       do k=1,npz
          wt1 = blend_wt(k)
          wt2 = 1. - wt1
