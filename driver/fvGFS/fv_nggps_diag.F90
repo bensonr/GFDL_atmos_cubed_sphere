@@ -11,7 +11,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -768,19 +768,19 @@ contains
         deallocate ( srh01 )
         deallocate ( srh03 )
 
-    !--- hourly averaged o3  
+    !--- hourly averaged o3
     if ( id_o3_ave > 0) then
       call store_data(id_o3_ave, o3_ave, Time, kstt_o3_ave, kend_o3_ave)
     endif
-     !--- hourly averaged no  
+     !--- hourly averaged no
     if ( id_no_ave > 0) then
       call store_data(id_no_ave, no_ave, Time, kstt_no_ave, kend_no_ave)
     endif
-     !--- hourly averaged no2  
+     !--- hourly averaged no2
     if ( id_no2_ave > 0) then
       call store_data(id_no2_ave, no2_ave, Time, kstt_no2_ave, kend_no2_ave)
     endif
-    !--- hourly averaged pm25  
+    !--- hourly averaged pm25
     if ( id_pm25_ave > 0) then
       call store_data(id_pm25_ave, pm25_ave, Time, kstt_pm25_ave, kend_pm25_ave)
     endif
@@ -988,9 +988,9 @@ contains
             no_ave(i,j,k)= 0.
             no2_ave(i,j,k)= 0.
             pm25_ave(i,j,k)= 0.
-         enddo      
-        enddo      
-       enddo      
+         enddo
+        enddo
+       enddo
     endif
     call average_tracer_hy1(isco,ieco,jsco,jeco,isdo,iedo,jsdo,jedo,ncnsto,npzo,&
             Atm(n)%q,o3_idx,o3_ave,nsteps_per_reset,ucf1)
@@ -1017,11 +1017,11 @@ contains
  end subroutine fv_nggps_tavg
 !
  subroutine average_tracer_hy1(is,ie,js,je,isd,ied,jsd,jed, &
-                 ncns,npz,tracer,tr_idx,tracer_ave,nstp,unitcf) 
+                 ncns,npz,tracer,tr_idx,tracer_ave,nstp,unitcf)
    integer, intent(in):: is, ie, js, je, isd, ied, jsd, jed
    integer, intent(in):: ncns, npz, nstp, tr_idx
    real, intent(in) :: unitcf
-   real, intent(in), dimension(isd:ied,jsd:jed,npz,ncns):: tracer 
+   real, intent(in), dimension(isd:ied,jsd:jed,npz,ncns):: tracer
    real, intent(inout), dimension(is:ie,js:je,npz):: tracer_ave
    integer i, j, k
 !
@@ -1029,9 +1029,9 @@ contains
     do j=js,je
      do i=is,ie
         tracer_ave(i,j,k)=tracer_ave(i,j,k)+tracer(i,j,k,tr_idx)/nstp*unitcf
-     enddo 
-    enddo 
-   enddo  
+     enddo
+    enddo
+   enddo
 
  end subroutine average_tracer_hy1
 
