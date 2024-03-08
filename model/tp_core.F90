@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -108,7 +108,8 @@ contains
 !! \cite putman2007finite \cite lin1996multiflux.
 !>@details It performs 1 time step of the forward advection.
  subroutine fv_tp_2d(q, crx, cry, npx, npy, hord, fx, fy, xfx, yfx,  &
-                     gridstruct, bd, ra_x, ra_y, lim_fac, mfx, mfy, mass, nord, damp_c)
+                     gridstruct, bd, ra_x, ra_y, lim_fac, mfx, mfy, &
+                     mass, nord, damp_c, damp_smag, damp_Km)
    type(fv_grid_bounds_type), intent(IN) :: bd
    integer, intent(in):: npx, npy
    integer, intent(in)::hord
@@ -131,7 +132,10 @@ contains
    real, OPTIONAL, intent(in):: mfy(bd%is:bd%ie  ,bd%js:bd%je+1)  !< Mass Flux Y-Dir
    real, OPTIONAL, intent(in):: mass(bd%isd:bd%ied,bd%jsd:bd%jed)
    real, OPTIONAL, intent(in):: damp_c
-   integer, OPTIONAL, intent(in):: nord !< order of divergence damping
+   integer, OPTIONAL, intent(in):: nord
+   real, OPTIONAL, intent(in) :: damp_smag ! additional 2nd-order flux
+   real, OPTIONAL, intent(in) :: damp_Km(bd%isd:bd%ied,bd%jsd:bd%jed) ! variable diffusion coeff for scalars
+                                                                      ! First try adapts cell-centered eddy diffusivities
 ! Local:
    integer ord_ou, ord_in
    real q_i(bd%isd:bd%ied,bd%js:bd%je)
@@ -224,7 +228,13 @@ contains
            damp = (damp_c * gridstruct%da_min)**(nord+1)
            call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
         endif
-      endif
+     endif
+     if (present(damp_smag) .and. present(damp_Km) .and. present(mass)) then
+        if (damp_smag > 1.e-3) then
+           damp = damp_smag * gridstruct%da_min !2nd order
+           call deln_flux(0, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, damp_Km=damp_Km )
+        endif
+     endif
    else
 !---------------------------------
 ! For transport of delp, vorticity
@@ -244,6 +254,12 @@ contains
                 damp = (damp_c * gridstruct%da_min)**(nord+1)
                 call deln_flux(nord, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd)
            endif
+      endif
+      if (present(damp_smag) .and. present(damp_Km)) then
+         if (damp_smag > 1.e-3) then
+            damp = damp_smag * gridstruct%da_min !2nd order
+            call deln_flux(0, is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, damp_Km=damp_Km)
+         endif
       endif
    endif
  end subroutine fv_tp_2d
@@ -1236,7 +1252,7 @@ endif
  end subroutine pert_ppm
 
 !TODO lmh 25may18: Need to ensure copy_corners is just ignored if not a global domain
- subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass )
+ subroutine deln_flux(nord,is,ie,js,je, npx, npy, damp, q, fx, fy, gridstruct, bd, mass, damp_Km )
 ! Del-n damping for the cell-mean values (A grid)
 !------------------
 !> nord = 0:   del-2
@@ -1251,6 +1267,7 @@ endif
    real, intent(in):: q(bd%isd:bd%ied, bd%jsd:bd%jed)  ! q ghosted on input
    type(fv_grid_type), intent(IN), target :: gridstruct
    real, optional, intent(in):: mass(bd%isd:bd%ied, bd%jsd:bd%jed)  ! q ghosted on input
+   real, OPTIONAL, intent(in) :: damp_Km(bd%isd:bd%ied,bd%jsd:bd%jed) ! variable diffusion coeff for scalars
 ! diffusive fluxes:
    real, intent(inout):: fx(bd%is:bd%ie+1,bd%js:bd%je), fy(bd%is:bd%ie,bd%js:bd%je+1)
 ! local:
@@ -1272,7 +1289,7 @@ endif
    i1 = is-1-nord;    i2 = ie+1+nord
    j1 = js-1-nord;    j2 = je+1+nord
 
-   if ( .not. present(mass) ) then
+   if ( .not. present(mass) .and. .not. present(damp_Km) ) then
      do j=j1, j2
         do i=i1,i2
            d2(i,j) = damp*q(i,j)
@@ -1359,7 +1376,21 @@ endif
 !---------------------------------------------
 
    if ( present(mass) ) then
-! Apply mass weighting to diffusive fluxes:
+      ! Apply mass weighting to diffusive fluxes:
+      if (present(damp_Km)) then
+        do j=js,je
+           do i=is,ie+1
+              damp2 = 0.25*damp*(damp_km(i-1,j)+damp_km(i,j))
+              fx(i,j) = fx(i,j) + damp2*(mass(i-1,j)+mass(i,j))*fx2(i,j)
+           enddo
+        enddo
+        do j=js,je+1
+           do i=is,ie
+              damp2 = 0.25*damp*(damp_km(i,j-1)+damp_km(i,j))
+              fy(i,j) = fy(i,j) + damp2*(mass(i,j-1)+mass(i,j))*fy2(i,j)
+           enddo
+        enddo
+      else
         damp2 = 0.5*damp
         do j=js,je
            do i=is,ie+1
@@ -1371,7 +1402,23 @@ endif
               fy(i,j) = fy(i,j) + damp2*(mass(i,j-1)+mass(i,j))*fy2(i,j)
            enddo
         enddo
+      endif
    else
+      if (present(damp_Km)) then
+        do j=js,je
+           do i=is,ie+1
+              damp2 = 0.25*damp*(damp_km(i-1,j)+damp_km(i,j))
+              fx(i,j) = fx(i,j) + damp2*fx2(i,j)
+           enddo
+        enddo
+        do j=js,je+1
+           do i=is,ie
+              damp2 = 0.25*damp*(damp_km(i,j-1)+damp_km(i,j))
+              fy(i,j) = fy(i,j) + damp2*fy2(i,j)
+           enddo
+        enddo
+      else
+
         do j=js,je
            do i=is,ie+1
               fx(i,j) = fx(i,j) + fx2(i,j)
@@ -1382,6 +1429,7 @@ endif
               fy(i,j) = fy(i,j) + fy2(i,j)
            enddo
         enddo
+     endif
    endif
 
  end subroutine deln_flux

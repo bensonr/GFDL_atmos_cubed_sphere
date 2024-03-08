@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -68,7 +68,6 @@ module boundary_mod
   use mpp_domains_mod,    only: AGRID, BGRID_NE, CGRID_NE, DGRID_NE
   use mpp_mod,            only: mpp_error, FATAL, mpp_sum, mpp_sync, mpp_npes, mpp_broadcast, WARNING, mpp_pe
 
-  use fv_mp_mod,          only: mp_bcst
   use fv_arrays_mod,      only: fv_atmos_type, fv_nest_BC_type_3D, fv_grid_bounds_type
   use mpp_mod,            only: mpp_send, mpp_recv
   use fv_timing_mod,      only: timing_on, timing_off
@@ -684,10 +683,10 @@ contains
    nbuffer = 0
 
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse, nest_domain, wbuffer, sbuffer, ebuffer, nbuffer, &
         nest_level=nest_level, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
    if (process) then
 
@@ -934,10 +933,10 @@ contains
    call init_buffer(nest_domain, wbufferx, sbufferx, ebufferx, nbufferx, npz, nest_level, position_x)
    call init_buffer(nest_domain, wbuffery, sbuffery, ebuffery, nbuffery, npz, nest_level, position_x)
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(u_coarse, v_coarse, nest_domain, wbufferx, wbuffery, sbufferx, sbuffery, &
                              ebufferx, ebuffery, nbufferx, nbuffery, flags=flags, nest_level=nest_level, gridtype=gridtype)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
    if (process) then
 
@@ -1150,9 +1149,9 @@ contains
       allocate(nbuffer(1,1,1))
 
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse, nest_domain, wbuffer, sbuffer, ebuffer, nbuffer, nest_level=nest_level, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
 
    deallocate(wbuffer, ebuffer, sbuffer, nbuffer)
@@ -1196,9 +1195,9 @@ contains
    allocate(nbuffer(1,1))
 
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse, nest_domain, wbuffer, sbuffer, ebuffer, nbuffer, nest_level=nest_level, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
 
    deallocate(wbuffer, ebuffer, sbuffer, nbuffer)
@@ -1303,9 +1302,9 @@ contains
    endif
    nbuffer = 0
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse, nest_domain, wbuffer, sbuffer, ebuffer, nbuffer, nest_level=nl, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
    if (process) then
 
@@ -1716,9 +1715,9 @@ contains
       position = CENTER
    end if
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse, nest_domain, wbuffer, sbuffer, ebuffer, nbuffer, nest_level=nest_level, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
  end subroutine nested_grid_BC_send_scalar
 
@@ -1752,10 +1751,10 @@ contains
       call init_nest_bc_type(nest_domain, nest_BC_buffers, npz, nest_level, position)
    endif
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(var_coarse_dummy, nest_domain, nest_BC_buffers%west_t1, nest_BC_buffers%south_t1, &
             nest_BC_buffers%east_t1, nest_BC_buffers%north_t1, nest_level=nest_level, position=position)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
  end subroutine nested_grid_BC_recv_scalar
 
@@ -1772,10 +1771,10 @@ contains
 
    integer :: nl = 1
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(u_coarse, v_coarse, nest_domain, wbufferx,wbuffery, sbufferx, sbuffery,  &
                              ebufferx, ebuffery, nbufferx, nbuffery, nest_level=nest_level, flags=flags, gridtype=gridtype)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
  end subroutine nested_grid_BC_send_vector
 
@@ -1886,12 +1885,12 @@ contains
       call init_nest_bc_type(nest_domain, nest_BC_v_buffers, npz, nest_level, position_y)
    endif
 
-       call timing_on ('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_fine(u_coarse_dummy, v_coarse_dummy, nest_domain, &
         nest_BC_u_buffers%west_t1, nest_BC_v_buffers%west_t1, nest_BC_u_buffers%south_t1, nest_BC_v_buffers%south_t1,  &
         nest_BC_u_buffers%east_t1, nest_BC_v_buffers%east_t1, nest_BC_u_buffers%north_t1, nest_BC_v_buffers%north_t1,  &
         nest_level, flags, gridtype)
-       call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
  end subroutine nested_grid_BC_recv_vector
 
@@ -2341,7 +2340,7 @@ contains
             npx, npy, npz, istag, jstag, r, nestupdate)
    endif
 
-      call timing_on('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_coarse(field_in=coarse_dat_send, nest_domain=nest_domain, field_out=coarse_dat_recv, &
         nest_level=nest_level, position=position)
 
@@ -2349,7 +2348,7 @@ contains
       deallocate(coarse_dat_send)
    end if
 
-      call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
    s = r/2 !rounds down (since r > 0)
    qr = r*upoff + nsponge - s
@@ -2620,14 +2619,14 @@ contains
            npx, npy, npz, istag_v, jstag_v, r, nestupdate)
    endif
 
-      call timing_on('COMM_TOTAL')
+   call timing_on('COMM_TOTAL')
    call mpp_update_nest_coarse(coarse_dat_send_u, coarse_dat_send_v, nest_domain, coarse_dat_recv_u, &
                                coarse_dat_recv_v, nest_level, flags, gridtype)
 
    if (allocated(coarse_dat_send_u)) deallocate(coarse_dat_send_u)
    if (allocated(coarse_dat_send_v)) deallocate(coarse_dat_send_v)
 
-      call timing_off('COMM_TOTAL')
+   call timing_off('COMM_TOTAL')
 
    s = r/2 !rounds down (since r > 0)
    qr = r*upoff + nsponge - s

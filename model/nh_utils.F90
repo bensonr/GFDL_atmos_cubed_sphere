@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -49,15 +49,10 @@ module nh_utils_mod
 !   </tr>
 ! </table>
 
-#ifdef OVERLOAD_R4
-   use constantsR4_mod,     only: rdgas, cp_air, grav
-#else
-   use constants_mod,     only: rdgas, cp_air, grav
-#endif
-   use constants_mod,     only: pi_8
+   use constants_mod,     only: rdgas, cp_air, grav, pi_8
    use tp_core_mod,       only: fv_tp_2d
    use sw_core_mod,       only: fill_4corners, del6_vt_flux
-   use fv_arrays_mod,     only: fv_grid_bounds_type, fv_grid_type,fv_nest_BC_type_3d
+   use fv_arrays_mod,     only: fv_grid_bounds_type, fv_grid_type, fv_nest_BC_type_3d
    use mpp_mod,           only: mpp_pe
 #ifdef MULTI_GASES
    use multi_gases_mod,  only:  vicpqd, vicvqd
@@ -69,8 +64,14 @@ module nh_utils_mod
    public update_dz_c, update_dz_d, nh_bc
    public sim_solver, sim1_solver, sim3_solver
    public sim3p0_solver, rim_2d
-   public Riem_Solver_c
+   public Riem_Solver_c, edge_scalar, imp_diff_w
+   public edge_profile1
 
+#ifdef DZ_MIN_6
+   real, parameter:: dz_min = 6.
+#else
+   real, parameter:: dz_min = 2.
+#endif
    real, parameter:: r3 = 1./3.
 
    real, allocatable :: rff(:)
@@ -211,6 +212,11 @@ CONTAINS
      enddo
      do k=km, 1, -1
         do i=is1, ie1
+#ifdef DZ_MIN_6
+           if (gz(i,j,k) < gz(i,j,k+1) + dz_min) then
+              write(*,'(A, 3I4, 2F)') 'UPDATE_DZ_C: dz limiter applied', i, j, k, gz(i,j,k), gz(i,j,k+1)
+           endif
+#endif
            gz(i,j,k) = max( gz(i,j,k), gz(i,j,k+1) + dz_min )
         enddo
      enddo
@@ -338,6 +344,11 @@ CONTAINS
      do k=km, 1, -1
         do i=is, ie
 ! Enforce monotonicity of height to prevent blowup
+#ifdef DZ_MIN_6
+           if (zh(i,j,k) < zh(i,j,k+1) + dz_min) then
+              write(*,'(A, 3I4, 2F)') 'UPDATE_DZ_D: dz limiter applied', i, j, k, zh(i,j,k), zh(i,j,k+1)
+           endif
+#endif
            zh(i,j,k) = max( zh(i,j,k), zh(i,j,k+1) + dz_min )
         enddo
      enddo
@@ -709,13 +720,12 @@ CONTAINS
   end subroutine Riem_Solver3test
 
 
-  subroutine imp_diff_w(j, is, ie, js, je, ng, km, cd, delz, ws, w, w3)
-  integer, intent(in) :: j, is, ie, js, je, km, ng
+  subroutine imp_diff_w(is, ie, km, cd, delz, ws, w)
+  integer, intent(in) :: is, ie, km
   real, intent(in) :: cd
-  real, intent(in) :: delz(is:ie, km)  !< delta-height (m)
-  real, intent(in) :: w(is:ie, km)  !< vertical vel. (m/s)
+  real, intent(in) :: delz(is:ie, km)  !> delta-height (m)
+  real, intent(inout) :: w(is:ie, km)  !> vertical vel. (m/s)
   real, intent(in) :: ws(is:ie)
-  real, intent(out) :: w3(is-ng:ie+ng,js-ng:je+ng,km)
 ! Local:
   real, dimension(is:ie,km):: c, gam, dz, wt
   real:: bet(is:ie)
@@ -753,22 +763,23 @@ CONTAINS
      do i=is,ie
         gam(i,km) = c(i,km-1) / bet(i)
                 a = cd/(dz(i,km)*delz(i,km))
-         wt(i,km) = (w(i,km) + 2.*ws(i)*cd/delz(i,km)**2                        &
+         w(i,km) = (w(i,km) + 2.*ws(i)*cd/delz(i,km)**2                        &
                   +  a*wt(i,km-1))/(1. + a + (cd+cd)/delz(i,km)**2 + a*gam(i,km))
      enddo
 
      do k=km-1,1,-1
         do i=is,ie
-           wt(i,k) = wt(i,k) - gam(i,k+1)*wt(i,k+1)
+           w(i,k) = wt(i,k) - gam(i,k+1)*w(i,k+1)
         enddo
      enddo
 
-     do k=1,km
-        do i=is,ie
-           w3(i,j,k) = wt(i,k)
-        enddo
-     enddo
-
+!!$
+!!$     do k=1,km
+!!$        do i=is,ie
+!!$           w3(i,j,k) = wt(i,k)
+!!$        enddo
+!!$     enddo
+!!$
   end subroutine imp_diff_w
 
 
@@ -2059,7 +2070,72 @@ CONTAINS
 
  end subroutine edge_profile_0grad
 
-!TODO LMH 25may18: do not need delz defined on full compute domain; pass appropriate BCs instead
+  subroutine edge_profile1(q1, q1e, i1, i2, km, dp0, limiter)
+! Edge profiles for a single scalar quantity
+ integer, intent(in):: i1, i2
+ integer, intent(in):: km
+ integer, intent(in):: limiter
+ real, intent(in):: dp0(km)
+ real, intent(in),  dimension(i1:i2,km):: q1
+ real, intent(out), dimension(i1:i2,km+1):: q1e
+!-----------------------------------------------------------------------
+ real, dimension(i1:i2,km+1):: qe1, gam  ! edge values
+ real  gak(km)
+ real  bet, r2o3, r4o3
+ real  g0, gk, xt1, xt2, a_bot
+ integer i, k
+
+! Assuming grid varying in vertical only
+   g0 = dp0(2) / dp0(1)
+  xt1 = 2.*g0*(g0+1. )
+  bet =    g0*(g0+0.5)
+  do i=i1,i2
+      qe1(i,1) = ( xt1*q1(i,1) + q1(i,2) ) / bet
+      gam(i,1) = ( 1. + g0*(g0+1.5) ) / bet
+  enddo
+
+  do k=2,km
+     gk = dp0(k-1) / dp0(k)
+     do i=i1,i2
+             bet =  2. + 2.*gk - gam(i,k-1)
+        qe1(i,k) = ( 3.*(q1(i,k-1)+gk*q1(i,k)) - qe1(i,k-1) ) / bet
+        gam(i,k) = gk / bet
+     enddo
+  enddo
+
+  a_bot = 1. + gk*(gk+1.5)
+    xt1 =   2.*gk*(gk+1.)
+  do i=i1,i2
+             xt2 = gk*(gk+0.5) - a_bot*gam(i,km)
+     qe1(i,km+1) = ( xt1*q1(i,km) + q1(i,km-1) - a_bot*qe1(i,km) ) / xt2
+  enddo
+
+  do k=km,1,-1
+     do i=i1,i2
+        qe1(i,k) = qe1(i,k) - gam(i,k)*qe1(i,k+1)
+     enddo
+  enddo
+
+!------------------
+! Apply constraints
+!------------------
+    if ( limiter/=0 ) then   ! limit the top & bottom winds
+         do i=i1,i2
+! Top
+            if ( q1(i,1)*qe1(i,1) < 0. ) qe1(i,1) = 0.
+! Surface:
+            if ( q1(i,km)*qe1(i,km+1) < 0. ) qe1(i,km+1) = 0.
+         enddo
+    endif
+
+    do k=1,km+1
+       do i=i1,i2
+          q1e(i,k) = qe1(i,k)
+       enddo
+    enddo
+
+  end subroutine edge_profile1_0grad
+
  subroutine nh_bc(ptop, grav, kappa, cp, delp, delzBC, pt, phis, &
 #ifdef MULTI_GASES
       q ,    &

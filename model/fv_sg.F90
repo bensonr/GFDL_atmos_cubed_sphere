@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -58,9 +58,7 @@ module fv_sg_mod
   use constants_mod,      only: rdgas, rvgas, cp_air, cp_vapor, hlv, hlf, kappa, grav
   use tracer_manager_mod, only: get_tracer_index
   use field_manager_mod,  only: MODEL_ATMOS
-#ifndef GFS_PHYS
-  use gfdl_cloud_microphys_mod, only: wqs1, wqs2, wqsat2_moist
-#endif
+  use gfdl_mp_mod,        only: wqs, mqs3d, c_liq, c_ice
   use fv_mp_mod,          only: mp_reduce_min, is_master
 #ifdef MULTI_GASES
   use multi_gases_mod,  only:  virq, virqd, virq_qpz, vicpqd_qpz, vicvqd_qpz, vicpqd, vicvqd, num_gas
@@ -68,15 +66,11 @@ module fv_sg_mod
 implicit none
 private
 
-public  fv_subgrid_z, qsmith, neg_adj3, neg_adj2, neg_adj4
+public  fv_subgrid_z, neg_adj3
 
   real, parameter:: esl = 0.621971831
   real, parameter:: tice = 273.16
-! real, parameter:: c_ice = 2106.  !< \cite emanuel1994atmospheric table, page 566
-  real, parameter:: c_ice = 1972.  !<  -15 C
-  real, parameter:: c_liq = 4.1855e+3    !< GFS
-! real, parameter:: c_liq = 4218.        !< ECMWF-IFS
-  real, parameter:: cv_vap = cp_vapor - rvgas  !< 1384.5
+  real, parameter:: cv_vap = cp_vapor - rvgas  ! 1384.5
   real, parameter:: c_con = c_ice
 
 ! real, parameter:: dc_vap =  cp_vapor - c_liq   ! = -2368.
@@ -97,8 +91,7 @@ public  fv_subgrid_z, qsmith, neg_adj3, neg_adj2, neg_adj4
   real, parameter:: Lv0 =  hlv0 - dc_vap*t_ice   !< = 3.147782e6
   real, parameter:: Li0 =  hlf0 - dc_ice*t_ice   !< = -2.431928e5
 
-  real, parameter:: zvir =  rvgas/rdgas - 1.     !< = 0.607789855
-  real, allocatable:: table(:),des(:)
+  real, parameter:: zvir =  rvgas/rdgas - 1.     ! = 0.607789855
   real:: lv00, d0_vap
 
 contains
@@ -479,7 +472,7 @@ contains
                     qcon(i,km1) = q0(i,km1,liq_wat) + q0(i,km1,ice_wat) +                  &
                                   q0(i,km1,snowwat) + q0(i,km1,rainwat) + q0(i,km1,graupel)
                  elseif ( nwat==7 ) then
-                    qcon(i,km1) = q0(i,km1,liq_wat) + q0(i,km1,ice_wat) +                  & 
+                    qcon(i,km1) = q0(i,km1,liq_wat) + q0(i,km1,ice_wat) +                  &
                                   q0(i,km1,snowwat) + q0(i,km1,rainwat) + q0(i,km1,graupel) + q0(i,km1,hailwat)
                  endif
 ! u:
@@ -685,10 +678,8 @@ contains
          u_dt(i,j,k) = rdt*(u0(i,k) - ua(i,j,k))
          v_dt(i,j,k) = rdt*(v0(i,k) - va(i,j,k))
            ta(i,j,k) = t0(i,k)   ! *** temperature updated ***
-#ifdef GFS_PHYS
            ua(i,j,k) = u0(i,k)
            va(i,j,k) = v0(i,k)
-#endif
       enddo
       do iq=1,nq
          do i=is,ie
@@ -750,6 +741,7 @@ contains
       real, parameter:: ustar2 = 1.E-4
       real:: cv_air, xvir
       integer :: sphum, liq_wat, rainwat, snowwat, graupel, hailwat, ice_wat, cld_amt
+      logical:: sat_adj = .false.
 
       cv_air = cp_air - rdgas ! = rdgas * (7/2-1) = 2.5*rdgas=717.68
         rk = cp_air/rdgas + 1.
@@ -793,7 +785,7 @@ contains
 !$OMP parallel do default(none) shared(im,is,ie,js,je,nq,kbot,qa,ta,sphum,ua,va,delp,peln,     &
 !$OMP                                  hydrostatic,pe,delz,g2,w,liq_wat,rainwat,ice_wat,  &
 !$OMP                                  snowwat,cv_air,m,graupel,hailwat,pkz,rk,rz,fra,cld_amt,    &
-!$OMP                                  u_dt,rdt,v_dt,xvir,nwat)                 &
+!$OMP                                  u_dt,rdt,v_dt,xvir,nwat,sat_adj)                 &
 !$OMP                          private(kk,lcp2,icp2,tcp3,dh,dq,den,qs,qsw,dqsdt,qcon,q0, &
 !$OMP                                  t0,u0,v0,w0,h0,pm,gzh,tvm,tmp,cpm,cvm, q_liq,q_sol,&
 #ifdef MULTI_GASES
@@ -1009,9 +1001,9 @@ contains
          km1 = k-1
 #ifdef TEST_MQ
 #ifdef MULTI_GASES
-         if(nwat>0) call qsmith(im, km, im, 1, t0(is,km1), pm(is,km1), q0(is,km1,sphum), qs)
+         if(nwat>0) call mqs3d(im, km, 1, t0(is,km1), pm(is,km1), q0(is,km1,sphum), qs)
 #else
-         if(nwat>0) call qsmith(im, 1, 1, t0(is,km1), pm(is,km1), q0(is,km1,sphum), qs)
+         if(nwat>0) call mqs3d(im, 1, 1, t0(is,km1), pm(is,km1), q0(is,km1,sphum), qs)
 #endif
 #endif
          do i=is,ie
@@ -1266,8 +1258,7 @@ contains
 !----------------------
 ! Saturation adjustment
 !----------------------
-#ifndef GFS_PHYS
-  if ( nwat == 6 ) then
+  if ( nwat > 5 .and. sat_adj) then
     do k=1, kbot
       if ( hydrostatic ) then
         do i=is, ie
@@ -1310,7 +1301,7 @@ contains
 
 ! Prevent super saturation over water:
        do i=is, ie
-          qsw = wqs2(t0(i,k), den(i,k), dqsdt)
+          qsw = wqs(t0(i,k), den(i,k), dqsdt)
            dq = q0(i,k,sphum) - qsw
           if ( dq > 0. ) then   ! remove super-saturation
              tcp3 = lcp2(i) + icp2(i)*min(1., dim(tice,t0(i,k))/40.)
@@ -1334,17 +1325,12 @@ contains
        enddo
     enddo
   endif
-#endif
 
    do k=1,kbot
       do i=is,ie
          u_dt(i,j,k) = rdt*(u0(i,k) - ua(i,j,k))
          v_dt(i,j,k) = rdt*(v0(i,k) - va(i,j,k))
            ta(i,j,k) = t0(i,k)   ! *** temperature updated ***
-#ifdef GFS_PHYS
-           ua(i,j,k) = u0(i,k)
-           va(i,j,k) = v0(i,k)
-#endif
       enddo
       do iq=1,nq
          if (iq .ne. cld_amt ) then
@@ -1368,182 +1354,6 @@ contains
 
  end subroutine fv_subgrid_z
 #endif
-
-
-  subroutine qsmith_init
-  integer, parameter:: length=2621
-  integer i
-
-  if( .not. allocated(table) ) then
-!                            Generate es table (dT = 0.1 deg. C)
-
-       allocate ( table(length) )
-       allocate (  des (length) )
-
-       call qs_table(length, table)
-
-       do i=1,length-1
-          des(i) = table(i+1) - table(i)
-       enddo
-       des(length) = des(length-1)
-  endif
-
-  end subroutine qsmith_init
-
-
-#ifdef MULTI_GASES
-  subroutine qsmith(im, km, imx, kmx, t, p, q, qs, dqdt)
-#else
-  subroutine qsmith(im, km, k1, t, p, q, qs, dqdt)
-#endif
-! input T in deg K; p (Pa)
-  real, intent(in),dimension(im,km):: t, p
-#ifdef MULTI_GASES
-  real, intent(in),dimension(im,km,*)::  q
-  integer, intent(in):: im, km, imx, kmx
-#else
-  integer, intent(in):: im, km, k1
-  real, intent(in),dimension(im,km)::  q
-#endif
-  real, intent(out),dimension(im,km):: qs
-  real, intent(out), optional:: dqdt(im,km)
-! Local:
-  real es(im,km)
-  real ap1, eps10
-  real Tmin
-  integer i, k, it, n
-
-  Tmin = tice-160.
-  eps10  = 10.*esl
-
-  if( .not. allocated(table) ) call  qsmith_init
-
-#ifdef MULTI_GASES
-      do k=1,kmx
-         do i=1,imx
-#else
-      do k=k1,km
-         do i=1,im
-#endif
-            ap1 = 10.*DIM(t(i,k), Tmin) + 1.
-            ap1 = min(2621., ap1)
-            it = ap1
-            es(i,k) = table(it) + (ap1-it)*des(it)
-#ifdef MULTI_GASES
-            qs(i,k) = esl*es(i,k)*virq(q(i,k,1:num_gas))/p(i,k)
-#else
-            qs(i,k) = esl*es(i,k)*(1.+zvir*q(i,k))/p(i,k)
-#endif
-         enddo
-      enddo
-
-      if ( present(dqdt) ) then
-#ifdef MULTI_GASES
-      do k=1,kmx
-           do i=1,imx
-#else
-      do k=k1,km
-           do i=1,im
-#endif
-              ap1 = 10.*DIM(t(i,k), Tmin) + 1.
-              ap1 = min(2621., ap1) - 0.5
-              it  = ap1
-#ifdef MULTI_GASES
-              dqdt(i,k) = eps10*(des(it)+(ap1-it)*(des(it+1)-des(it)))*virq(q(i,k,1:num_gas))/p(i,k)
-#else
-              dqdt(i,k) = eps10*(des(it)+(ap1-it)*(des(it+1)-des(it)))*(1.+zvir*q(i,k))/p(i,k)
-#endif
-           enddo
-      enddo
-      endif
-
-  end subroutine qsmith
-
-
- subroutine qs_table(n,table)
-      integer, intent(in):: n
-      real table (n)
-      real:: dt=0.1
-      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20
-      real wice, wh2o
-      integer i
-! Constants
-      esbasw = 1013246.0
-      tbasw =   373.16
-      tbasi =   273.16
-      Tmin = tbasi - 160.
-!  Compute es over water
-!  see smithsonian meteorological tables page 350.
-      do  i=1,n
-          tem = Tmin+dt*real(i-1)
-          aa  = -7.90298*(tbasw/tem-1)
-          b   =  5.02808*alog10(tbasw/tem)
-          c   = -1.3816e-07*(10**((1-tem/tbasw)*11.344)-1)
-          d   =  8.1328e-03*(10**((tbasw/tem-1)*(-3.49149))-1)
-          e   = alog10(esbasw)
-          table(i)  = 0.1*10**(aa+b+c+d+e)
-      enddo
-
- end subroutine qs_table
-
- subroutine qs_table_m(n,table)
-! Mixed (blended) table
-      integer, intent(in):: n
-      real table (n)
-      real esupc(200)
-      real:: dt=0.1
-      real esbasw, tbasw, esbasi, tbasi, Tmin, tem, aa, b, c, d, e, esh20
-      real wice, wh2o
-      integer i
-
-! Constants
-      esbasw = 1013246.0
-       tbasw =     373.16
-      esbasi =    6107.1
-       tbasi =     273.16
-! ****************************************************
-!  Compute es over ice between -160c and 0 c.
-      Tmin = tbasi - 160.
-!  see smithsonian meteorological tables page 350.
-      do i=1,1600
-         tem = Tmin+dt*real(i-1)
-         aa  = -9.09718 *(tbasi/tem-1.0)
-         b   = -3.56654 *alog10(tbasi/tem)
-         c   =  0.876793*(1.0-tem/tbasi)
-         e   = alog10(esbasi)
-         table(i)=10**(aa+b+c+e)
-      enddo
-! *****************************************************
-!  Compute es over water between -20c and 102c.
-!  see smithsonian meteorological tables page 350.
-      do  i=1,1221
-          tem = 253.16+dt*real(i-1)
-          aa  = -7.90298*(tbasw/tem-1)
-          b   =  5.02808*alog10(tbasw/tem)
-          c   = -1.3816e-07*(10**((1-tem/tbasw)*11.344)-1)
-          d   =  8.1328e-03*(10**((tbasw/tem-1)*(-3.49149))-1)
-          e   = alog10(esbasw)
-          esh20  = 10**(aa+b+c+d+e)
-          if (i <= 200) then
-              esupc(i) = esh20
-          else
-              table(i+1400) = esh20
-          endif
-      enddo
-!********************************************************************
-!  Derive blended es over ice and supercooled water between -20c and 0c
-      do i=1,200
-         tem  = 253.16+dt*real(i-1)
-         wice = 0.05*(273.16-tem)
-         wh2o = 0.05*(tem-253.16)
-         table(i+1400) = wice*table(i+1400)+wh2o*esupc(i)
-      enddo
-
-      do i=1,n
-         table(i) = table(i)*0.1
-      enddo
-
- end subroutine qs_table_m
 
  subroutine neg_adj3(is, ie, js, je, ng, kbot, hydrostatic, peln, delz, pt, dp,  &
 #ifdef MULTI_GASES
@@ -2020,11 +1830,8 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, qh2, dp2, p2, 
        do j=js, je
           do i=is, ie
              p2(i,j) = dp2(i,j)/(peln(i,k+1,j)-peln(i,k,j))
-             q_liq = max(0., ql2(i,j) + qr2(i,j))
-             q_sol = max(0., qi2(i,j) + qs2(i,j))
-             cpm = (1.-(qv2(i,j)+q_liq+q_sol))*cp_air + qv2(i,j)*cp_vapor + q_liq*c_liq + q_sol*c_ice
-             lcpk(i,j) = hlv / cpm
-             icpk(i,j) = hlf / cpm
+             lcpk(i,j) = hlv / cp_air
+             icpk(i,j) = hlf / cp_air
           enddo
        enddo
      else
@@ -2155,7 +1962,7 @@ real, dimension(is:ie,js:je):: pt2, qv2, ql2, qi2, qs2, qr2, qg2, qh2, dp2, p2, 
         endif
 
 ! vapor <---> liquid water --------------------------------
-        qsw = wqsat2_moist(pt2(i,j), qv2(i,j), p2(i,j), dwsdt)
+        qsw = wqs(pt2(i,j), p2(i,j), qv2(i,j), dwsdt)
         sink = min( ql2(i,j), (qsw-qv2(i,j))/(1.+lcpk(i,j)*dwsdt) )
         qv2(i,j) = qv2(i,j) + sink
         ql2(i,j) = ql2(i,j) - sink

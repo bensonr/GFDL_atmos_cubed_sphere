@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -75,7 +75,8 @@
 
 
 #include <fms_platform.h>
- use constants_mod,   only: omega, pi=>pi_8, cnst_radius=>radius
+ use constants_mod,   only: pi=>pi_8
+ use fv_arrays_mod,   only: radius, omega ! scaled for small earth
  use mpp_mod,         only: FATAL, mpp_error, WARNING
  use external_sst_mod, only: i_sst, j_sst, sst_ncep, sst_anom
  use mpp_domains_mod, only: mpp_update_domains, DGRID_NE, mpp_global_sum
@@ -94,17 +95,15 @@
  implicit none
  private
  logical:: symm_grid
-#ifdef NO_QUAD_PRECISION
-! 64-bit precision (kind=8)
- integer, parameter:: f_p = selected_real_kind(15)
-#else
+#ifdef ENABLE_QUAD_PRECISION
 ! Higher precision (kind=16) for grid geometrical factors:
  integer, parameter:: f_p = selected_real_kind(20)
+#else
+! 64-bit precision (kind=8)
+ integer, parameter:: f_p = selected_real_kind(15)
 #endif
  real, parameter::  big_number=1.d8
  real, parameter:: tiny_number=1.d-8
-
- real(kind=R_GRID) :: radius=cnst_radius
 
  real, parameter:: ptop_min=1.d-8
 
@@ -120,7 +119,7 @@
         direct_transform, cube_transform, &
         make_eta_level, expand_cell, cart_to_latlon, intp_great_circle, normalize_vect, &
         dist2side_latlon, spherical_linear_interpolation, get_latlon_vector
- public symm_grid
+ public symm_grid, cubed_a2d
 
  INTERFACE fill_ghost
 #ifdef OVERLOAD_R4
@@ -266,7 +265,7 @@
            if (.not. Atm%flagstruct%external_eta) then
               call set_eta(npz, Atm%ks, Atm%ptop, Atm%ak, Atm%bk, Atm%flagstruct%npz_type, Atm%flagstruct%fv_eta_file)
               if ( is_master() ) then
-                 write(*,*) 'Grid_init', npz, Atm%ks, Atm%ptop
+                 !write(*,*) 'Grid_init', npz, Atm%ks, Atm%ptop
                  tmp1 = Atm%ak(Atm%ks+1)
                  do k=Atm%ks+1,npz
                     tmp1 = max(tmp1, (Atm%ak(k)-Atm%ak(k+1))/max(1.E-9, (Atm%bk(k+1)-Atm%bk(k))) )
@@ -302,7 +301,7 @@
   if ( sw_corner ) then
        tmp1 = great_circle_dist(grid(1,1,1:2), agrid(1,1,1:2))
        tmp2 = great_circle_dist(grid(1,1,1:2), agrid(2,2,1:2))
-       write(*,*) 'Corner interpolation coefficient=', tmp2/(tmp2-tmp1)
+       if (Atm%flagstruct%fv_debug) write(*,*) 'Corner interpolation coefficient=', tmp2/(tmp2-tmp1)
   endif
 
   if (grid_type < 3) then
@@ -561,14 +560,8 @@
               call normalize_vect( ee2(1:3,i,j) )
 
 ! symmetrical grid
-#ifdef TEST_FP
-              tmp1 = inner_prod(ee1(1:3,i,j), ee2(1:3,i,j))
-              cosa(i,j) = sign(min(1., abs(tmp1)), tmp1)
-              sina(i,j) = sqrt(max(0.,1. -cosa(i,j)**2))
-#else
               cosa(i,j) = 0.5*(cos_sg(i-1,j-1,8)+cos_sg(i,j,6))
               sina(i,j) = 0.5*(sin_sg(i-1,j-1,8)+sin_sg(i,j,6))
-#endif
            enddo
         enddo
 
@@ -666,56 +659,35 @@
               sin_sg(i,0,4) = sin_sg(1,i,1)
               cos_sg(0,i,3) = cos_sg(i,1,2)
               cos_sg(i,0,4) = cos_sg(1,i,1)
-!!!           cos_sg(0,i,7) = cos_sg(i,1,6)
-!!!           cos_sg(0,i,8) = cos_sg(i,1,7)
-!!!           cos_sg(i,0,8) = cos_sg(1,i,9)
-!!!           cos_sg(i,0,9) = cos_sg(1,i,6)
            enddo
-!!!        cos_sg(0,0,8) = 0.5*(cos_sg(0,1,7)+cos_sg(1,0,9))
-
       endif
       if ( nw_corner ) then
            do i=npy,npy+2
               sin_sg(0,i,3) = sin_sg(npy-i,npy-1,4)
               cos_sg(0,i,3) = cos_sg(npy-i,npy-1,4)
-!!!           cos_sg(0,i,7) = cos_sg(npy-i,npy-1,8)
-!!!           cos_sg(0,i,8) = cos_sg(npy-i,npy-1,9)
            enddo
            do i=0,-2,-1
               sin_sg(i,npy,2) = sin_sg(1,npy-i,1)
               cos_sg(i,npy,2) = cos_sg(1,npy-i,1)
-!!!           cos_sg(i,npy,6) = cos_sg(1,npy-i,9)
-!!!           cos_sg(i,npy,7) = cos_sg(1,npy-i,6)
            enddo
-!!!        cos_sg(0,npy,7) = 0.5*(cos_sg(1,npy,6)+cos_sg(0,npy-1,8))
       endif
       if ( se_corner ) then
            do j=0,-2,-1
               sin_sg(npx,j,1) = sin_sg(npx-j,1,2)
               cos_sg(npx,j,1) = cos_sg(npx-j,1,2)
-!!!           cos_sg(npx,j,6) = cos_sg(npx-j,1,7)
-!!!           cos_sg(npx,j,9) = cos_sg(npx-j,1,6)
            enddo
            do i=npx,npx+2
               sin_sg(i,0,4) = sin_sg(npx-1,npx-i,3)
               cos_sg(i,0,4) = cos_sg(npx-1,npx-i,3)
-!!!           cos_sg(i,0,9) = cos_sg(npx-1,npx-i,8)
-!!!           cos_sg(i,0,8) = cos_sg(npx-1,npx-i,7)
            enddo
-!!!        cos_sg(npx,0,9) = 0.5*(cos_sg(npx,1,6)+cos_sg(npx-1,0,8))
       endif
       if ( ne_corner ) then
          do i=0,2
             sin_sg(npx,npy+i,1) = sin_sg(npx+i,npy-1,4)
             sin_sg(npx+i,npy,2) = sin_sg(npx-1,npy+i,3)
             cos_sg(npx,npy+i,1) = cos_sg(npx+i,npy-1,4)
-!!!         cos_sg(npx,npy+i,6) = cos_sg(npx+i,npy-1,9)
-!!!         cos_sg(npx,npy+i,9) = cos_sg(npx+i,npy-1,8)
             cos_sg(npx+i,npy,2) = cos_sg(npx-1,npy+i,3)
-!!!         cos_sg(npx+i,npy,6) = cos_sg(npx-1,npy+i,7)
-!!!         cos_sg(npx+i,npy,7) = cos_sg(npx-1,npy+i,8)
          end do
-!!!      cos_sg(npx,npy,6) = 0.5*(cos_sg(npx-1,npy,7)+cos_sg(npx,npy-1,9))
       endif
 
    else
@@ -736,42 +708,6 @@
    endif
 
    if ( grid_type < 3 ) then
-
-#ifdef USE_NORM_VECT
-!-------------------------------------------------------------
-! Make normal vect at face edges after consines are computed:
-!-------------------------------------------------------------
-! for old d2a2c_vect routines
-      if (.not. Atm%gridstruct%bounded_domain) then
-         do j=js-1,je+1
-            if ( is==1 ) then
-               i=1
-               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j))
-               call normalize_vect( ew(1,i,j,1) )
-            endif
-            if ( (ie+1)==npx ) then
-               i=npx
-               call vect_cross(ew(1,i,j,1), grid3(1,i,j+1), grid3(1,i,j))
-               call normalize_vect( ew(1,i,j,1) )
-            endif
-         enddo
-
-         if ( js==1 ) then
-            j=1
-            do i=is-1,ie+1
-               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j))
-               call normalize_vect( es(1,i,j,2) )
-            enddo
-         endif
-         if ( (je+1)==npy ) then
-            j=npy
-            do i=is-1,ie+1
-               call vect_cross(es(1,i,j,2), grid3(1,i,j),grid3(1,i+1,j))
-               call normalize_vect( es(1,i,j,2) )
-            enddo
-         endif
-      endif
-#endif
 
 ! For omega computation:
 ! Unit vectors:
@@ -838,12 +774,15 @@
      call init_cubed_to_latlon( Atm%gridstruct, Atm%flagstruct%hydrostatic, agrid, grid_type, c2l_order, Atm%bd )
 
      call global_mx(area, Atm%ng, Atm%gridstruct%da_min, Atm%gridstruct%da_max, Atm%bd)
-     if( is_master() ) write(*,*) 'da_max/da_min=', Atm%gridstruct%da_max/Atm%gridstruct%da_min
+     if( is_master() ) write(*,'(A, G20.8)') 'da_max/da_min=', Atm%gridstruct%da_max/Atm%gridstruct%da_min
 
      call global_mx_c(area_c(is:ie,js:je), is, ie, js, je, Atm%gridstruct%da_min_c, Atm%gridstruct%da_max_c)
 
-     if( is_master() ) write(*,*) 'da_max_c/da_min_c=', Atm%gridstruct%da_max_c/Atm%gridstruct%da_min_c
-
+     if( is_master() ) then
+        write(*,'(A, G20.8)') 'da_max_c = ', Atm%gridstruct%da_max_c
+        write(*,'(A, G20.8)') 'da_min_c = ', Atm%gridstruct%da_min_c
+        write(*,'(A, G20.8)') 'da_max_c/da_min_c=', Atm%gridstruct%da_max_c/Atm%gridstruct%da_min_c
+     endif
 !------------------------------------------------
 ! Initialization for interpolation at face edges
 !------------------------------------------------
@@ -1939,14 +1878,6 @@
              u1(1:3,i,j) = 0.d0
              u2(1:3,i,j) = 0.d0
         else
-#ifdef OLD_VECT
-          do k=1,3
-             u1(k,i,j) = pp(k,i+1,j)+pp(k,i+1,j+1) - pp(k,i,j)-pp(k,i,j+1)
-             u2(k,i,j) = pp(k,i,j+1)+pp(k,i+1,j+1) - pp(k,i,j)-pp(k,i+1,j)
-          enddo
-          call normalize_vect( u1(1,i,j) )
-          call normalize_vect( u2(1,i,j) )
-#else
           call cell_center3(pp(1,i,j), pp(1,i+1,j), pp(1,i,j+1), pp(1,i+1,j+1), pc)
 ! e1:
           call mid_pt3_cart(pp(1,i,j),   pp(1,i,j+1),   p1)
@@ -1960,7 +1891,6 @@
           call vect_cross(p3, p2, p1)
           call vect_cross(u2(1,i,j), pc, p3)
           call normalize_vect( u2(1,i,j) )
-#endif
         endif
        enddo
     enddo
@@ -2547,9 +2477,9 @@
   je  = bd%je
 
   if ( mode > 0 ) then
-                                   call timing_on('COMM_TOTAL')
+       call timing_on('COMM_TOTAL')
        call mpp_update_domains(u, v, domain, gridtype=DGRID_NE)
-                                  call timing_off('COMM_TOTAL')
+       call timing_off('COMM_TOTAL')
   endif
 
 !$OMP parallel do default(none) shared(is,ie,js,je,km,npx,npy,grid_type,bounded_domain,c2,c1, &
@@ -3310,11 +3240,6 @@
 
     if ( is_master() ) then
          write(*,*) 'Make_eta_level ...., ptop=', ptop
-#ifdef PRINT_GRID
-         do k=1,km+1
-            write(*,*) ph(k), ak(k), bk(k)
-         enddo
-#endif
     endif
 
     deallocate ( pem )
@@ -3705,9 +3630,9 @@
        enddo
     enddo
 ! (u_dt,v_dt) are now on local coordinate system
-       call timing_on('COMM_TOTAL')
+  call timing_on('COMM_TOTAL')
   call mpp_update_domains(u_dt, v_dt, domain, gridtype=AGRID_PARAM)
-       call timing_off('COMM_TOTAL')
+  call timing_off('COMM_TOTAL')
 
     dt5 = 0.5 * dt
 
@@ -3792,6 +3717,189 @@
 
  end subroutine update2d_dwinds_phys
 
+ subroutine cubed_a2d( npx, npy, npz, ua, va, u, v, gridstruct, fv_domain, bd )
+
+! Purpose; Transform wind on A grid to D grid
+
+  type(fv_grid_bounds_type), intent(IN) :: bd
+  integer, intent(in):: npx, npy, npz
+  real, intent(inout), dimension(bd%isd:bd%ied,bd%jsd:bd%jed,npz):: ua, va
+  real, intent(out):: u(bd%isd:bd%ied,  bd%jsd:bd%jed+1,npz)
+  real, intent(out):: v(bd%isd:bd%ied+1,bd%jsd:bd%jed  ,npz)
+  type(fv_grid_type), intent(IN), target :: gridstruct
+  type(domain2d), intent(INOUT) :: fv_domain
+! local:
+  real v3(3,bd%is-1:bd%ie+1,bd%js-1:bd%je+1)
+  real ue(3,bd%is-1:bd%ie+1,bd%js:bd%je+1)    ! 3D winds at edges
+  real ve(3,bd%is:bd%ie+1,bd%js-1:bd%je+1)    ! 3D winds at edges
+  real, dimension(bd%is:bd%ie):: ut1, ut2, ut3
+  real, dimension(bd%js:bd%je):: vt1, vt2, vt3
+  integer i, j, k, im2, jm2
+
+  real(kind=R_GRID), pointer, dimension(:,:,:)   :: vlon, vlat
+  real(kind=R_GRID), pointer, dimension(:)       :: edge_vect_w, edge_vect_e, edge_vect_s, edge_vect_n
+  real(kind=R_GRID), pointer, dimension(:,:,:,:) :: ew, es
+
+  integer :: is,  ie,  js,  je
+  integer :: isd, ied, jsd, jed
+
+  is  = bd%is
+  ie  = bd%ie
+  js  = bd%js
+  je  = bd%je
+  isd = bd%isd
+  ied = bd%ied
+  jsd = bd%jsd
+  jed = bd%jed
+
+  vlon => gridstruct%vlon
+  vlat => gridstruct%vlat
+
+  edge_vect_w => gridstruct%edge_vect_w
+  edge_vect_e => gridstruct%edge_vect_e
+  edge_vect_s => gridstruct%edge_vect_s
+  edge_vect_n => gridstruct%edge_vect_n
+
+  ew => gridstruct%ew
+  es => gridstruct%es
+
+  call mpp_update_domains(ua, fv_domain, complete=.false.)
+  call mpp_update_domains(va, fv_domain, complete=.true.)
+
+    im2 = (npx-1)/2
+    jm2 = (npy-1)/2
+
+    do k=1, npz
+! Compute 3D wind on A grid
+       do j=js-1,je+1
+          do i=is-1,ie+1
+             v3(1,i,j) = ua(i,j,k)*vlon(i,j,1) + va(i,j,k)*vlat(i,j,1)
+             v3(2,i,j) = ua(i,j,k)*vlon(i,j,2) + va(i,j,k)*vlat(i,j,2)
+             v3(3,i,j) = ua(i,j,k)*vlon(i,j,3) + va(i,j,k)*vlat(i,j,3)
+          enddo
+       enddo
+
+! A --> D
+! Interpolate to cell edges
+       do j=js,je+1
+          do i=is-1,ie+1
+             ue(1,i,j) = 0.5*(v3(1,i,j-1) + v3(1,i,j))
+             ue(2,i,j) = 0.5*(v3(2,i,j-1) + v3(2,i,j))
+             ue(3,i,j) = 0.5*(v3(3,i,j-1) + v3(3,i,j))
+          enddo
+       enddo
+
+       do j=js-1,je+1
+          do i=is,ie+1
+             ve(1,i,j) = 0.5*(v3(1,i-1,j) + v3(1,i,j))
+             ve(2,i,j) = 0.5*(v3(2,i-1,j) + v3(2,i,j))
+             ve(3,i,j) = 0.5*(v3(3,i-1,j) + v3(3,i,j))
+          enddo
+       enddo
+
+! --- E_W edges (for v-wind):
+     if (.not. gridstruct%bounded_domain) then
+     if ( is==1) then
+       i = 1
+       do j=js,je
+        if ( j>jm2 ) then
+             vt1(j) = edge_vect_w(j)*ve(1,i,j-1)+(1.-edge_vect_w(j))*ve(1,i,j)
+             vt2(j) = edge_vect_w(j)*ve(2,i,j-1)+(1.-edge_vect_w(j))*ve(2,i,j)
+             vt3(j) = edge_vect_w(j)*ve(3,i,j-1)+(1.-edge_vect_w(j))*ve(3,i,j)
+        else
+             vt1(j) = edge_vect_w(j)*ve(1,i,j+1)+(1.-edge_vect_w(j))*ve(1,i,j)
+             vt2(j) = edge_vect_w(j)*ve(2,i,j+1)+(1.-edge_vect_w(j))*ve(2,i,j)
+             vt3(j) = edge_vect_w(j)*ve(3,i,j+1)+(1.-edge_vect_w(j))*ve(3,i,j)
+        endif
+       enddo
+       do j=js,je
+          ve(1,i,j) = vt1(j)
+          ve(2,i,j) = vt2(j)
+          ve(3,i,j) = vt3(j)
+       enddo
+     endif
+
+     if ( (ie+1)==npx ) then
+       i = npx
+       do j=js,je
+        if ( j>jm2 ) then
+             vt1(j) = edge_vect_e(j)*ve(1,i,j-1)+(1.-edge_vect_e(j))*ve(1,i,j)
+             vt2(j) = edge_vect_e(j)*ve(2,i,j-1)+(1.-edge_vect_e(j))*ve(2,i,j)
+             vt3(j) = edge_vect_e(j)*ve(3,i,j-1)+(1.-edge_vect_e(j))*ve(3,i,j)
+        else
+             vt1(j) = edge_vect_e(j)*ve(1,i,j+1)+(1.-edge_vect_e(j))*ve(1,i,j)
+             vt2(j) = edge_vect_e(j)*ve(2,i,j+1)+(1.-edge_vect_e(j))*ve(2,i,j)
+             vt3(j) = edge_vect_e(j)*ve(3,i,j+1)+(1.-edge_vect_e(j))*ve(3,i,j)
+        endif
+       enddo
+       do j=js,je
+          ve(1,i,j) = vt1(j)
+          ve(2,i,j) = vt2(j)
+          ve(3,i,j) = vt3(j)
+       enddo
+     endif
+
+! N-S edges (for u-wind):
+     if ( js==1 ) then
+       j = 1
+       do i=is,ie
+        if ( i>im2 ) then
+             ut1(i) = edge_vect_s(i)*ue(1,i-1,j)+(1.-edge_vect_s(i))*ue(1,i,j)
+             ut2(i) = edge_vect_s(i)*ue(2,i-1,j)+(1.-edge_vect_s(i))*ue(2,i,j)
+             ut3(i) = edge_vect_s(i)*ue(3,i-1,j)+(1.-edge_vect_s(i))*ue(3,i,j)
+        else
+             ut1(i) = edge_vect_s(i)*ue(1,i+1,j)+(1.-edge_vect_s(i))*ue(1,i,j)
+             ut2(i) = edge_vect_s(i)*ue(2,i+1,j)+(1.-edge_vect_s(i))*ue(2,i,j)
+             ut3(i) = edge_vect_s(i)*ue(3,i+1,j)+(1.-edge_vect_s(i))*ue(3,i,j)
+        endif
+       enddo
+       do i=is,ie
+          ue(1,i,j) = ut1(i)
+          ue(2,i,j) = ut2(i)
+          ue(3,i,j) = ut3(i)
+       enddo
+     endif
+
+     if ( (je+1)==npy ) then
+       j = npy
+       do i=is,ie
+        if ( i>im2 ) then
+             ut1(i) = edge_vect_n(i)*ue(1,i-1,j)+(1.-edge_vect_n(i))*ue(1,i,j)
+             ut2(i) = edge_vect_n(i)*ue(2,i-1,j)+(1.-edge_vect_n(i))*ue(2,i,j)
+             ut3(i) = edge_vect_n(i)*ue(3,i-1,j)+(1.-edge_vect_n(i))*ue(3,i,j)
+        else
+             ut1(i) = edge_vect_n(i)*ue(1,i+1,j)+(1.-edge_vect_n(i))*ue(1,i,j)
+             ut2(i) = edge_vect_n(i)*ue(2,i+1,j)+(1.-edge_vect_n(i))*ue(2,i,j)
+             ut3(i) = edge_vect_n(i)*ue(3,i+1,j)+(1.-edge_vect_n(i))*ue(3,i,j)
+        endif
+       enddo
+       do i=is,ie
+          ue(1,i,j) = ut1(i)
+          ue(2,i,j) = ut2(i)
+          ue(3,i,j) = ut3(i)
+       enddo
+     endif
+
+     endif ! .not. bounded_domain
+
+     do j=js,je+1
+        do i=is,ie
+           u(i,j,k) =  ue(1,i,j)*es(1,i,j,1) +  &
+                       ue(2,i,j)*es(2,i,j,1) +  &
+                       ue(3,i,j)*es(3,i,j,1)
+        enddo
+     enddo
+     do j=js,je
+        do i=is,ie+1
+           v(i,j,k) = ve(1,i,j)*ew(1,i,j,2) +  &
+                      ve(2,i,j)*ew(2,i,j,2) +  &
+                      ve(3,i,j)*ew(3,i,j,2)
+        enddo
+     enddo
+
+   enddo         ! k-loop
+
+ end subroutine cubed_a2d
 
 #ifdef TO_DO_MQ
  subroutine init_mq(phis, gridstruct, npx, npy, is, ie, js, je, ng)

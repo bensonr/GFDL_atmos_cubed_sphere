@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -51,6 +51,7 @@
  use fv_mp_mod, only: is_master, fill_corners, XDir, YDir
  use fv_arrays_mod, only: fv_grid_type, fv_grid_bounds_type, fv_flags_type
  use a2b_edge_mod, only: a2b_ord4
+ use mpp_mod, only: mpp_pe !DEBUG
 
 #ifdef SW_DYNAMICS
  use test_cases_mod,   only: test_case
@@ -93,7 +94,7 @@
   real, parameter:: b3 = -13./60.
   real, parameter:: b4 =  0.45
   real, parameter:: b5 = -0.05
-
+  real, parameter :: smag_scalar = r3
 
       private
       public :: c_sw, d_sw, d_md, fill_4corners, &
@@ -521,8 +522,8 @@
 !! and other prognostic varaiables.
    subroutine d_sw(delpc, delp,  ptc,   pt, u,  v, w, uc,vc, &
                    ua, va, divg_d, xflux, yflux, cx, cy,              &
-                   crx_adv, cry_adv,  xfx_adv, yfx_adv, q_con, z_rat, kgb, heat_source,diss_est,  &
-                   zvir, sphum, nq, q, k, km, inline_q,  &
+                   crx_adv, cry_adv,  xfx_adv, yfx_adv, q_con, z_rat, kgb, heat_source,    &
+                   diss_est, zvir, sphum, nq, q, k, km, inline_q,  &
                    dt, hord_tr, hord_mt, hord_vt, hord_tm, hord_dp, nord,   &
                    nord_v, nord_w, nord_t, dddmp, d2_bg, d4_bg, damp_v, damp_w, &
                    damp_t, d_con, hydrostatic, gridstruct, flagstruct, bd)
@@ -566,11 +567,14 @@
 !---
       real :: fx2(bd%isd:bd%ied+1,bd%jsd:bd%jed)
       real :: fy2(bd%isd:bd%ied,  bd%jsd:bd%jed+1)
+      real :: fx3(bd%isd:bd%ied+1,bd%jsd:bd%jed)
+      real :: fy3(bd%isd:bd%ied,  bd%jsd:bd%jed+1)
       real :: dw(bd%is:bd%ie,bd%js:bd%je) !<  work array
 !---
       real, dimension(bd%is:bd%ie+1,bd%js:bd%je+1):: ub, vb
       real :: wk(bd%isd:bd%ied,bd%jsd:bd%jed) !<  work array
-      real :: ke(bd%isd:bd%ied+1,bd%jsd:bd%jed+1) !<  needed for corner_comm
+      real :: smag_q(bd%isd:bd%ied,bd%jsd:bd%jed)
+      real :: ke(bd%isd:bd%ied+1,bd%jsd:bd%jed+1) !<  needs this for corner_comm
       real :: vort(bd%isd:bd%ied,bd%jsd:bd%jed)     !< Vorticity
       real ::   fx(bd%is:bd%ie+1,bd%js:bd%je  )  !< 1-D X-direction Fluxes
       real ::   fy(bd%is:bd%ie  ,bd%js:bd%je+1)  !< 1-D Y-direction Fluxes
@@ -937,7 +941,6 @@
          enddo
       enddo
 
-
       call fv_tp_2d(delp, crx_adv, cry_adv, npx, npy, hord_dp, fx, fy,  &
                     xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
                     nord=nord_v, damp_c=damp_v)
@@ -981,18 +984,19 @@
 ! 0.5 * [ (w+dw)**2 - w**2 ] = w*dw + 0.5*dw*dw
 !                   heat_source(i,j) = -d_con*dw(i,j)*(w(i,j)+0.5*dw(i,j))
                     heat_source(i,j) = dd8 - dw(i,j)*(w(i,j)+0.5*dw(i,j))
-                    diss_est(i,j) = heat_source(i,j)
+                    if ( flagstruct%do_diss_est ) then
+                       diss_est(i,j) = heat_source(i,j)
+                    endif
                    enddo
                 enddo
-            endif
-            call fv_tp_2d(w, crx_adv,cry_adv, npx, npy, hord_vt, gx, gy, xfx_adv, yfx_adv, &
-                          gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac,                  &
-                          mfx=fx, mfy=fy)
-            do j=js,je
-               do i=is,ie
-                  w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
-               enddo
-            enddo
+           endif
+           call fv_tp_2d(w, crx_adv,cry_adv, npx, npy, hord_vt, gx, gy, xfx_adv, yfx_adv, &
+                          gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, mfx=fx, mfy=fy)
+           do j=js,je
+              do i=is,ie
+                 w(i,j) = delp(i,j)*w(i,j) + (gx(i,j)-gx(i+1,j)+gy(i,j)-gy(i,j+1))*rarea(i,j)
+              enddo
+           enddo
         endif
 
 #ifdef USE_COND
@@ -1013,10 +1017,15 @@
 !          enddo
 !       enddo
 !    endif
+#if defined(GFS_PHYS) || defined(DCMIP)
         call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
                       xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
-                      mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v)
-!                     mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t)
+                      mfx=fx, mfy=fy, mass=delp, nord=nord_v, damp_c=damp_v) !SHiELD
+#else
+        call fv_tp_2d(pt, crx_adv,cry_adv, npx, npy, hord_tm, gx, gy,  &
+                      xfx_adv,yfx_adv, gridstruct, bd, ra_x, ra_y, flagstruct%lim_fac, &
+                      mfx=fx, mfy=fy, mass=delp, nord=nord_t, damp_c=damp_t) !AM4
+#endif
 #endif
 
      if ( inline_q ) then
@@ -1461,7 +1470,7 @@
 
    endif
 
-   if ( d_con > 1.e-5 ) then
+   if ( d_con > 1.e-5 .or. flagstruct%do_diss_est) then
       do j=js,je+1
          do i=is,ie
             ub(i,j) = vort(i,j) - vort(i+1,j)
@@ -1515,9 +1524,12 @@
    if ( damp_v>1.E-5 ) then
         damp4 = (damp_v*gridstruct%da_min_c)**(nord_v+1)
         call del6_vt_flux(nord_v, npx, npy, damp4, wk, vort, ut, vt, gridstruct, bd)
+   elseif (flagstruct%do_diss_est) then
+        ut=0.
+        vt=0.
    endif
 
-   if ( d_con > 1.e-5 .or. flagstruct%do_skeb ) then
+   if ( d_con > 1.e-5 .or. flagstruct%do_diss_est ) then
       do j=js,je+1
          do i=is,ie
             ub(i,j) = (ub(i,j) + vt(i,j))*rdx(i,j)
@@ -1548,7 +1560,7 @@
                   (ub(i,j)**2 + ub(i,j+1)**2 + vb(i,j)**2 + vb(i+1,j)**2)  &
                               + 2.*(gy(i,j)+gy(i,j+1)+gx(i,j)+gx(i+1,j))   &
                               - cosa_s(i,j)*(u2*dv2 + v2*du2 + du2*dv2)) )
-           if (flagstruct%do_skeb) then
+           if (flagstruct%do_diss_est) then
              diss_est(i,j) = diss_est(i,j)-rsin2(i,j)*( &
                   (ub(i,j)**2 + ub(i,j+1)**2 + vb(i,j)**2 + vb(i+1,j)**2)  &
                               + 2.*(gy(i,j)+gy(i,j+1)+gx(i,j)+gx(i+1,j))   &
@@ -1698,7 +1710,7 @@
 
 !>@brief The subroutine 'del6_vt_flux' applies 2nd, 4th, or 6th-order damping
 !! to fluxes ("vorticity damping")
- subroutine del6_vt_flux(nord, npx, npy, damp, q, d2, fx2, fy2, gridstruct, bd)
+ subroutine del6_vt_flux(nord, npx, npy, damp, q, d2, fx2, fy2, gridstruct, bd, damp_Km)
 ! Del-nord damping for the relative vorticity
 ! nord must be <= 2
 !------------------
@@ -1706,11 +1718,15 @@
 ! nord = 1:   del-4
 ! nord = 2:   del-6
 !------------------
+!This does the same operation as tp_core::deln_flux except that it does not
+!add diffusive fluxes into the regular fluxes
    integer, intent(in):: nord, npx, npy
    real, intent(in):: damp
    type(fv_grid_bounds_type), intent(IN) :: bd
    real, intent(inout):: q(bd%isd:bd%ied, bd%jsd:bd%jed)  ! rel. vorticity ghosted on input
    type(fv_grid_type), intent(IN), target :: gridstruct
+   real, OPTIONAL, intent(in) :: damp_Km(bd%isd:bd%ied,bd%jsd:bd%jed) ! variable diffusion coeff for scalars
+                                                                      ! First try adapts cell-centered eddy diffusivities
 ! Work arrays:
    real, intent(out):: d2(bd%isd:bd%ied, bd%jsd:bd%jed)
    real, intent(out):: fx2(bd%isd:bd%ied+1,bd%jsd:bd%jed), fy2(bd%isd:bd%ied,bd%jsd:bd%jed+1)
@@ -1807,6 +1823,20 @@
          enddo
       enddo
    enddo
+   endif
+
+   if (present(damp_Km)) then !Coefficient multiplied in earlier
+      do j=js,je
+         do i=is,ie+1
+            fx2(i,j) = fx2(i,j)*0.5*damp_km(i,j)
+         enddo
+      enddo
+      do j=js,je+1
+         do i=is,ie
+            fy2(i,j) = fy2(i,j)*0.5*damp_km(i,j)
+         enddo
+      enddo
+
    endif
 
  end subroutine del6_vt_flux
@@ -2097,6 +2127,133 @@ end subroutine divergence_corner_nest
        enddo
 
  end subroutine smag_corner
+
+
+ subroutine smag_cell(dt, u, v, ua, va, smag_q, bd, npx, npy, gridstruct, ng, do_smag, dudz, dvdz, smag2d)
+! Compute the cell-mean Tension_Shear strain for Smagorinsky diffusion
+!!!  works only if (grid_type==4) (need to add corner handling on cubed sphere)
+!!! Next want to add in vertical shear terms
+   !!! To complete the calculation
+ type(fv_grid_bounds_type), intent(IN) :: bd
+ real, intent(in):: dt, smag2d
+ integer, intent(IN) :: npx, npy, ng
+ real, intent(in),  dimension(bd%isd:bd%ied,  bd%jsd:bd%jed+1):: u
+ real, intent(in),  dimension(bd%isd:bd%ied+1,bd%jsd:bd%jed  ):: v
+ real, intent(in),  dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: ua, va
+ real, intent(out), dimension(bd%isd:bd%ied,bd%jsd:bd%jed):: smag_q
+ type(fv_grid_type), intent(IN), target :: gridstruct
+ logical, intent(in) :: do_smag
+ real , intent(IN) :: dudz(bd%isd:bd%ied,  bd%jsd:bd%jed+1)
+ real , intent(IN) :: dvdz(bd%isd:bd%ied+1,bd%jsd:bd%jed)
+
+! local
+ real:: ut(bd%isd:bd%ied+1,bd%jsd:bd%jed)
+ real:: vt(bd%isd:bd%ied,  bd%jsd:bd%jed+1)
+ real:: wk(bd%isd:bd%ied,bd%jsd:bd%jed) !  work array
+ real:: sh(bd%isd:bd%ied,bd%jsd:bd%jed)
+ integer i,j
+ integer is2, ie1
+ real smag_limit
+
+ real, pointer, dimension(:,:) :: dxc, dyc, dx, dy, rarea, rarea_c
+
+ integer :: is,  ie,  js,  je
+ integer :: isd, ied, jsd, jed
+
+ is  = bd%is
+ ie  = bd%ie
+ js  = bd%js
+ je  = bd%je
+
+ isd  = bd%isd
+ ied  = bd%ied
+ jsd  = bd%jsd
+ jed  = bd%jed
+
+ dxc => gridstruct%dxc
+ dyc => gridstruct%dyc
+ dx  => gridstruct%dx
+ dy  => gridstruct%dy
+ rarea   => gridstruct%rarea
+ rarea_c => gridstruct%rarea_c
+
+  is2 = max(2,is); ie1 = min(npx-1,ie+1)
+
+  if (smag2d > 1.e-3) then
+     smag_limit = 0.20/smag2d
+  elseif (do_smag) then
+     smag_q = 0.0
+     return
+  endif
+
+! Smag = sqrt [ T**2 + S**2 ]:  unit = 1/s
+! where T = du/dx - dv/dy;   S = du/dy + dv/dx
+! Compute tension strain at corners:
+       do j=js-1,je+2
+          do i=is-2,ie+2
+             ut(i,j) = u(i,j)*dyc(i,j)
+          enddo
+       enddo
+       do j=js-2,je+2
+          do i=is-1,ie+2
+             vt(i,j) = v(i,j)*dxc(i,j)
+          enddo
+       enddo
+       do j=js-1,je+2
+          do i=is-1,ie+2
+             wk(i,j) = rarea_c(i,j)*(vt(i,j-1)-vt(i,j)-ut(i-1,j)+ut(i,j))
+          enddo
+       enddo
+! Fix the corners?? if grid_type /= 4
+       do j=js-1,je+1
+          do i=is-1,ie+1
+             smag_q(i,j) = 0.25*(wk(i,j) + wk(i,j+1) + wk(i+1,j) + wk(i+1,j+1))
+          enddo
+       enddo
+
+       if (do_smag) then
+          do j=js-1,je+1
+             do i=is-1,ie+1
+                smag_q(i,j) = smag_q(i,j) - 0.5*(dvdz(i,j-1)+dvdz(i,j))
+                smag_q(i,j) = smag_q(i,j) + 0.5*(dudz(i-1,j)+dudz(i,j))
+             enddo
+          enddo
+       endif
+
+! Compute shear strain:
+       do j=js-1,je+2
+          do i=is-1,ie+1
+             vt(i,j) = u(i,j)*dx(i,j)
+          enddo
+       enddo
+       do j=js-1,je+1
+          do i=is-1,ie+2
+             ut(i,j) = v(i,j)*dy(i,j)
+          enddo
+       enddo
+
+       do j=js-1,je+1
+          do i=is-1,ie+1
+             wk(i,j) = rarea(i,j)*(vt(i,j)-vt(i,j+1)+ut(i,j)-ut(i+1,j))
+          enddo
+       enddo
+       if (do_smag) then
+          do j=js-1,je+1
+             do i=is-1,ie+1
+                wk(i,j) = wk(i,j) - 0.5*(dvdz(i-1,j)+dvdz(i,j))
+                wk(i,j) = wk(i,j) - 0.5*(dudz(i,j-1)+dudz(i,j))
+                smag_q(i,j) = min(dt*sqrt( wk(i,j)**2 + smag_q(i,j)**2 ), smag_limit)
+             enddo
+          enddo
+       else
+          do j=js-1,je+1
+             do i=is-1,ie+1
+                smag_q(i,j) = dt*sqrt( wk(i,j)**2 + smag_q(i,j)**2 )
+             enddo
+          enddo
+       endif
+
+ end subroutine smag_cell
 
 
  subroutine xtp_u(is,ie,js,je,isd,ied,jsd,jed,c, u, v, flux, iord, dx, rdx, npx, npy, grid_type, bounded_domain, lim_fac)

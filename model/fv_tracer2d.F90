@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -190,13 +190,13 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
   enddo  ! k-loop
 
     if (trdm>1.e-4) then
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
+      call timing_on('COMM_TOTAL')
+      call timing_on('COMM_TRACER')
       call complete_group_halo_update(dp1_pack, domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
+      call timing_off('COMM_TRACER')
+      call timing_off('COMM_TOTAL')
+   endif
 
-    endif
   call mp_reduce_max(cmax,npz)
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,cx,xfx, &
@@ -232,11 +232,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
      endif
 
   enddo
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
+  call timing_on('COMM_TOTAL')
+  call timing_on('COMM_TRACER')
   call complete_group_halo_update(q_pack, domain)
-                        call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
+  call timing_off('COMM_TRACER')
+  call timing_off('COMM_TOTAL')
 
 ! Begin k-independent tracer transport; can not be OpenMPed because the mpp_update call.
   do k=1,npz
@@ -309,11 +309,11 @@ subroutine tracer_2d_1L(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, n
                    dp1(i,j,k) = dp2(i,j)
                 enddo
              enddo
-                               call timing_on('COMM_TOTAL')
-                         call timing_on('COMM_TRACER')
+             call timing_on('COMM_TOTAL')
+             call timing_on('COMM_TRACER')
              call mpp_update_domains(qn2, domain)
-                        call timing_off('COMM_TRACER')
-                              call timing_off('COMM_TOTAL')
+             call timing_off('COMM_TRACER')
+             call timing_off('COMM_TOTAL')
         endif
      enddo  ! time-split loop
   enddo    ! k-loop
@@ -486,19 +486,19 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
     endif
 
     if (trdm>1.e-4) then
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
+      call timing_on('COMM_TOTAL')
+      call timing_on('COMM_TRACER')
       call complete_group_halo_update(dp1_pack, domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
+      call timing_off('COMM_TRACER')
+      call timing_off('COMM_TOTAL')
+   endif
 
-    endif
     do it=1,nsplt
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
+      call timing_on('COMM_TOTAL')
+      call timing_on('COMM_TRACER')
       call complete_group_halo_update(q_pack, domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
+      call timing_off('COMM_TRACER')
+      call timing_off('COMM_TOTAL')
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq,ksplt,&
 !$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
@@ -556,11 +556,11 @@ subroutine tracer_2d(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, npx, npy,
      enddo ! npz
 
       if ( it /= nsplt ) then
-                      call timing_on('COMM_TOTAL')
-                          call timing_on('COMM_TRACER')
+           call timing_on('COMM_TOTAL')
+           call timing_on('COMM_TRACER')
            call start_group_halo_update(q_pack, q, domain)
-                          call timing_off('COMM_TRACER')
-                      call timing_off('COMM_TOTAL')
+           call timing_off('COMM_TRACER')
+           call timing_off('COMM_TOTAL')
       endif
 
    enddo  ! nsplt
@@ -734,16 +734,23 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
           enddo
       endif
 
+      if (trdm>1.e-4) then
+         call timing_on('COMM_TOTAL')
+         call timing_on('COMM_TRACER')
+         call complete_group_halo_update(dp1_pack, domain)
+         call timing_off('COMM_TRACER')
+         call timing_off('COMM_TOTAL')
+      endif
 
     do it=1,nsplt
        if ( gridstruct%nested ) then
           neststruct%tracer_nest_timestep = neststruct%tracer_nest_timestep + 1
        end if
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
+      call timing_on('COMM_TOTAL')
+      call timing_on('COMM_TRACER')
       call complete_group_halo_update(q_pack, domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
+      call timing_off('COMM_TRACER')
+      call timing_off('COMM_TOTAL')
 
       if (gridstruct%nested) then
             do iq=1,nq
@@ -767,16 +774,6 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
                                                it, iq )
             enddo
       endif
-
-      if (trdm>1.e-4) then
-                        call timing_on('COMM_TOTAL')
-                            call timing_on('COMM_TRACER')
-         call complete_group_halo_update(dp1_pack, domain)
-                           call timing_off('COMM_TRACER')
-                       call timing_off('COMM_TOTAL')
-
-      endif
-
 
 !$OMP parallel do default(none) shared(is,ie,js,je,isd,ied,jsd,jed,npz,dp1,mfx,mfy,rarea,nq, &
 !$OMP                                  area,xfx,yfx,q,cx,cy,npx,npy,hord,gridstruct,bd,it,nsplt,nord_tr,trdm,lim_fac) &
@@ -821,11 +818,11 @@ subroutine tracer_2d_nested(q, dp1, mfx, mfy, cx, cy, gridstruct, bd, domain, np
       enddo ! npz
 
       if ( it /= nsplt ) then
-                      call timing_on('COMM_TOTAL')
-                          call timing_on('COMM_TRACER')
+           call timing_on('COMM_TOTAL')
+           call timing_on('COMM_TRACER')
            call start_group_halo_update(q_pack, q, domain)
-                          call timing_off('COMM_TRACER')
-                      call timing_off('COMM_TOTAL')
+           call timing_off('COMM_TRACER')
+           call timing_off('COMM_TOTAL')
       endif
 
    enddo  ! nsplt

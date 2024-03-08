@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -114,14 +114,15 @@ module fv_control_mod
 !   </tr>
 ! </table>
 
-   use constants_mod,       only: pi=>pi_8, kappa, radius, grav, rdgas
+   use constants_mod,       only: pi=>pi_8, kappa, grav, rdgas
+   use fv_arrays_mod,       only: radius ! scaled for small earth
    use field_manager_mod,   only: MODEL_ATMOS
    use fms_mod,             only: write_version_number, check_nml_error
    use fms2_io_mod,         only: file_exists
    use mpp_mod,             only: FATAL, mpp_error, mpp_pe, stdlog, &
                                   mpp_npes, mpp_get_current_pelist, &
                                   input_nml_file, get_unit, WARNING, &
-                                  read_ascii_file
+                                  read_ascii_file, NOTE
    use mpp_domains_mod,     only: mpp_get_data_domain, mpp_get_compute_domain, mpp_get_tile_id
    use tracer_manager_mod,  only: tm_get_number_tracers => get_number_tracers, &
                                   tm_get_tracer_index   => get_tracer_index,   &
@@ -142,7 +143,6 @@ module fv_control_mod
    use fv_mp_mod,           only: broadcast_domains, mp_barrier, is_master, setup_master, grids_master_procs, tile_fine
    use fv_mp_mod,           only: MAX_NNEST, MAX_NTILE
    use test_cases_mod,      only: read_namelist_test_case_nml
-   use fv_timing_mod,       only: timing_on, timing_off, timing_init, timing_prt
    use mpp_domains_mod,     only: domain2D
    use mpp_domains_mod,     only: mpp_define_nest_domains, nest_domain_type, mpp_get_global_domain
    use mpp_domains_mod,     only: mpp_get_C2F_index, mpp_get_F2C_index
@@ -244,11 +244,13 @@ module fv_control_mod
      real    , pointer :: scale_z
      real    , pointer :: w_max
      real    , pointer :: z_min
+     real    , pointer :: d2bg_zq
      real    , pointer :: lim_fac
 
      integer , pointer :: nord
      integer , pointer :: nord_tr
      real    , pointer :: dddmp
+     real    , pointer :: smag2d
      real    , pointer :: d2_bg
      real    , pointer :: d4_bg
      real    , pointer :: vtdm4
@@ -266,18 +268,25 @@ module fv_control_mod
      logical , pointer :: RF_fast
      logical , pointer :: consv_am
      logical , pointer :: do_sat_adj
+     logical , pointer :: consv_checker
+     logical , pointer :: do_fast_phys
+     logical , pointer :: do_intermediate_phys
      logical , pointer :: do_inline_mp
+     logical , pointer :: do_aerosol
+     logical , pointer :: do_cosp
      logical , pointer :: do_f3d
      logical , pointer :: no_dycore
      logical , pointer :: convert_ke
      logical , pointer :: do_vort_damp
      logical , pointer :: use_old_omega
+     logical , pointer :: remap_te
      ! PG off centering:
      real    , pointer :: beta
      integer , pointer :: n_sponge
      real    , pointer :: d_ext
      integer , pointer :: nwat
      logical , pointer :: warm_start
+
      logical , pointer :: inline_q
      real , pointer :: shift_fac
      logical , pointer :: do_schmidt, do_cube_transform
@@ -330,9 +339,10 @@ module fv_control_mod
      real    , pointer :: ke_bg
      real    , pointer :: consv_te
      real    , pointer :: tau
-     real    , pointer :: tau_w
      real    , pointer :: fast_tau_w_sec
      real    , pointer :: rf_cutoff
+     real    , pointer :: te_err
+     real    , pointer :: tw_err
      logical , pointer :: filter_phys
      logical , pointer :: dwind_2d
      logical , pointer :: breed_vortex_inline
@@ -346,8 +356,6 @@ module fv_control_mod
      logical , pointer :: adiabatic
      logical , pointer :: moist_phys
      logical , pointer :: do_Held_Suarez
-     logical , pointer :: do_reed_physics
-     logical , pointer :: reed_cond_only
      logical , pointer :: reproduce_sum
      logical , pointer :: adjust_dry_mass
      logical , pointer :: fv_debug
@@ -356,15 +364,18 @@ module fv_control_mod
      logical , pointer :: mountain
      logical , pointer :: remap_t
      logical , pointer :: z_tracer
+     logical , pointer :: w_limiter
 
      logical , pointer :: old_divg_damp
      logical , pointer :: fv_land
+     logical , pointer :: do_am4_remap
      logical , pointer :: nudge
      logical , pointer :: nudge_ic
      logical , pointer :: ncep_ic
      logical , pointer :: nggps_ic
-   logical , pointer :: hrrrv3_ic
+     logical , pointer :: hrrrv3_ic
      logical , pointer :: ecmwf_ic
+     logical , pointer :: use_gfsO3
      logical , pointer :: gfs_phil
      logical , pointer :: agrid_vel_rst
      logical , pointer :: use_new_ncep
@@ -372,12 +383,13 @@ module fv_control_mod
      logical , pointer :: fv_diag_ic
      logical , pointer :: external_ic
      logical , pointer :: external_eta
+     logical , pointer :: is_ideal_case
      logical , pointer :: read_increment
      logical , pointer :: hydrostatic
      logical , pointer :: phys_hydrostatic
      logical , pointer :: use_hydro_pressure
      logical , pointer :: do_uni_zfull !miz
-     logical , pointer :: adj_mass_vmr ! f1p
+     integer , pointer :: adj_mass_vmr ! f1p
      logical , pointer :: hybrid_z
      logical , pointer :: Make_NH
      logical , pointer :: make_hybrid_z
@@ -398,14 +410,12 @@ module fv_control_mod
      real(kind=R_GRID), pointer :: deglon_start, deglon_stop, &  ! boundaries of latlon patch
           deglat_start, deglat_stop
      real(kind=R_GRID), pointer :: deglat
+     real(kind=R_GRID), pointer :: domain_deg
 
      logical, pointer :: nested, twowaynest
-     logical, pointer :: regional
-     integer, pointer :: bc_update_interval
-     integer, pointer :: nrows_blend
-     logical, pointer :: regional_bcs_from_gsi
-     logical, pointer :: write_restart_with_bcs
-     integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, upoff, nsponge, ioffset, joffset
+     logical, pointer :: regional, write_restart_with_bcs, regional_bcs_from_gsi
+     integer, pointer :: bc_update_interval, nrows_blend
+     integer, pointer :: parent_tile, refinement, nestbctype, nestupdate, nsponge, ioffset, joffset
      real, pointer :: s_weight, update_blend
 
      character(len=16), pointer :: restart_resolution
@@ -415,6 +425,9 @@ module fv_control_mod
      logical, pointer :: write_only_coarse_intermediate_restarts
      logical, pointer :: write_coarse_agrid_vel_rst
      logical, pointer :: write_coarse_dgrid_vel_rst
+     logical, pointer :: restart_from_agrid_winds
+     logical, pointer :: write_optional_dgrid_vel_rst
+     logical, pointer :: pass_full_omega_to_physics_in_non_hydrostatic_mode
      !!!!!!!!!! END POINTERS !!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
      this_grid = -1 ! default
@@ -500,8 +513,8 @@ module fv_control_mod
 !          Atm(n)%nml_filename = 'input.nml'
            Atm(n)%nml_filename = trim(nml_filename)
         endif
-        if (.not. file_exists(Atm(n)%nml_filename) .and. .not. skip_nml_read) then
-           call mpp_error(FATAL, "Could not find nested grid namelist "//Atm(n)%nml_filename)
+        if (.not. file_exists(Atm(n)%nml_filename)) then
+           call mpp_error(FATAL, "Could not find namelist "//Atm(n)%nml_filename)
         endif
      enddo
 
@@ -545,38 +558,15 @@ module fv_control_mod
         endif
      endif
 
-     ! 3pre.
-     call timing_init
-     call timing_on('TOTAL')
-
      ! 3. Read namelists, do option processing and I/O
 
      call set_namelist_pointers(Atm(this_grid))
      call fv_diag_init_gn(Atm(this_grid))
-#ifdef INTERNAL_FILE_NML
-     if (this_grid .gt. 1) then
-        write(Atm(this_grid)%nml_filename,'(A4, I2.2)') 'nest', this_grid
-        if (.not. file_exists('input_'//trim(Atm(this_grid)%nml_filename)//'.nml')) then
-           call mpp_error(FATAL, "Could not find nested grid namelist "//'input_'//trim(Atm(this_grid)%nml_filename)//'.nml')
-        endif
-     else
-        Atm(this_grid)%nml_filename = ''
-     endif
-     if (.not. skip_nml_read) then
-       call read_input_nml(Atm(this_grid)%nml_filename) !re-reads into internal namelist
-     endif
-#endif
+     call read_input_nml(alt_input_nml_path=Atm(this_grid)%nml_filename) !re-reads into internal namelist
      call read_namelist_fv_grid_nml
      call read_namelist_fv_core_nml(Atm(this_grid)) ! do options processing here too?
-#ifdef MULTI_GASES
-     call read_namelist_multi_gases_nml(Atm(this_grid)%nml_filename, &
-           Atm(this_grid)%flagstruct%ncnst,  Atm(this_grid)%flagstruct%nwat)
-#endif
-     if ( Atm(this_grid)%flagstruct%molecular_diffusion ) then
-        call read_namelist_molecular_diffusion_nml(Atm(this_grid)%nml_filename, &
-                  Atm(this_grid)%flagstruct%ncnst,  Atm(this_grid)%flagstruct%nwat)
-     endif
-     call read_namelist_test_case_nml(Atm(this_grid)%nml_filename)
+     call read_namelist_test_case_nml
+     call read_namelist_integ_phys_nml
      call mpp_get_current_pelist(Atm(this_grid)%pelist, commID=commID) ! for commID
      call mp_start(commID,halo_update_type)
 
@@ -596,11 +586,11 @@ module fv_control_mod
 
      endif
 
-     if (Atm(this_grid)%flagstruct%regional) then
-        if ( Atm(this_grid)%flagstruct%consv_te > 0.) then
-           call mpp_error(FATAL, 'The global energy fixer cannot be used on a regional grid. consv_te must be set to 0.')
-        end if
-     endif
+      if (Atm(this_grid)%flagstruct%regional) then
+         if ( consv_te > 0.) then
+            call mpp_error(FATAL, 'The global energy fixer cannot be used on a regional grid. consv_te must be set to 0.')
+         end if
+      end if
 
      !Now only one call to mpp_define_nest_domains for ALL nests
      ! set up nest_level, tile_fine, tile_coarse
@@ -799,7 +789,6 @@ module fv_control_mod
      !Initialize restart
      call fv_restart_init()
 
-
    contains
 !>@brief The subroutine 'setup_namelist_pointers' associates the MODULE flag pointers
 !! with the ARRAY flag variables for the grid active on THIS pe so the flags
@@ -819,15 +808,18 @@ module fv_control_mod
        hord_tm                       => Atm%flagstruct%hord_tm
        hord_dp                       => Atm%flagstruct%hord_dp
        kord_tm                       => Atm%flagstruct%kord_tm
+       remap_te                      => Atm%flagstruct%remap_te
        hord_tr                       => Atm%flagstruct%hord_tr
        kord_tr                       => Atm%flagstruct%kord_tr
        scale_z                       => Atm%flagstruct%scale_z
        w_max                         => Atm%flagstruct%w_max
        z_min                         => Atm%flagstruct%z_min
+       d2bg_zq                       => Atm%flagstruct%d2bg_zq
        lim_fac                       => Atm%flagstruct%lim_fac
        nord                          => Atm%flagstruct%nord
        nord_tr                       => Atm%flagstruct%nord_tr
        dddmp                         => Atm%flagstruct%dddmp
+       smag2d                        => Atm%flagstruct%smag2d
        d2_bg                         => Atm%flagstruct%d2_bg
        d4_bg                         => Atm%flagstruct%d4_bg
        vtdm4                         => Atm%flagstruct%vtdm4
@@ -844,7 +836,12 @@ module fv_control_mod
        RF_fast                       => Atm%flagstruct%RF_fast
        consv_am                      => Atm%flagstruct%consv_am
        do_sat_adj                    => Atm%flagstruct%do_sat_adj
+       consv_checker                 => Atm%flagstruct%consv_checker
+       do_fast_phys                  => Atm%flagstruct%do_fast_phys
+       do_intermediate_phys          => Atm%flagstruct%do_intermediate_phys
        do_inline_mp                  => Atm%flagstruct%do_inline_mp
+       do_aerosol                    => Atm%flagstruct%do_aerosol
+       do_cosp                       => Atm%flagstruct%do_cosp
        do_f3d                        => Atm%flagstruct%do_f3d
        no_dycore                     => Atm%flagstruct%no_dycore
        convert_ke                    => Atm%flagstruct%convert_ke
@@ -866,8 +863,8 @@ module fv_control_mod
        regional                      => Atm%flagstruct%regional
        bc_update_interval            => Atm%flagstruct%bc_update_interval
        nrows_blend                   => Atm%flagstruct%nrows_blend
-       regional_bcs_from_gsi         => Atm%flagstruct%regional_bcs_from_gsi
        write_restart_with_bcs        => Atm%flagstruct%write_restart_with_bcs
+       regional_bcs_from_gsi         => Atm%flagstruct%regional_bcs_from_gsi
        reset_eta                     => Atm%flagstruct%reset_eta
        ignore_rst_cksum              => Atm%flagstruct%ignore_rst_cksum
        p_fac                         => Atm%flagstruct%p_fac
@@ -907,9 +904,10 @@ module fv_control_mod
        ke_bg                         => Atm%flagstruct%ke_bg
        consv_te                      => Atm%flagstruct%consv_te
        tau                           => Atm%flagstruct%tau
-       tau_w                         => Atm%flagstruct%tau_w
        fast_tau_w_sec                => Atm%flagstruct%fast_tau_w_sec
        rf_cutoff                     => Atm%flagstruct%rf_cutoff
+       te_err                        => Atm%flagstruct%te_err
+       tw_err                        => Atm%flagstruct%tw_err
        filter_phys                   => Atm%flagstruct%filter_phys
        dwind_2d                      => Atm%flagstruct%dwind_2d
        breed_vortex_inline           => Atm%flagstruct%breed_vortex_inline
@@ -923,24 +921,24 @@ module fv_control_mod
        adiabatic                     => Atm%flagstruct%adiabatic
        moist_phys                    => Atm%flagstruct%moist_phys
        do_Held_Suarez                => Atm%flagstruct%do_Held_Suarez
-       do_reed_physics               => Atm%flagstruct%do_reed_physics
-       reed_cond_only                => Atm%flagstruct%reed_cond_only
        reproduce_sum                 => Atm%flagstruct%reproduce_sum
        adjust_dry_mass               => Atm%flagstruct%adjust_dry_mass
        fv_debug                      => Atm%flagstruct%fv_debug
-       fv_timers                     => Atm%flagstruct%fv_timers
+       w_limiter                     => Atm%flagstruct%w_limiter
        srf_init                      => Atm%flagstruct%srf_init
        mountain                      => Atm%flagstruct%mountain
        remap_t                       => Atm%flagstruct%remap_t
        z_tracer                      => Atm%flagstruct%z_tracer
        old_divg_damp                 => Atm%flagstruct%old_divg_damp
        fv_land                       => Atm%flagstruct%fv_land
+       do_am4_remap                  => Atm%flagstruct%do_am4_remap
        nudge                         => Atm%flagstruct%nudge
        nudge_ic                      => Atm%flagstruct%nudge_ic
        ncep_ic                       => Atm%flagstruct%ncep_ic
        nggps_ic                      => Atm%flagstruct%nggps_ic
        hrrrv3_ic                     => Atm%flagstruct%hrrrv3_ic
        ecmwf_ic                      => Atm%flagstruct%ecmwf_ic
+       use_gfsO3                     => Atm%flagstruct%use_gfsO3
        gfs_phil                      => Atm%flagstruct%gfs_phil
        agrid_vel_rst                 => Atm%flagstruct%agrid_vel_rst
        use_new_ncep                  => Atm%flagstruct%use_new_ncep
@@ -948,6 +946,7 @@ module fv_control_mod
        fv_diag_ic                    => Atm%flagstruct%fv_diag_ic
        external_ic                   => Atm%flagstruct%external_ic
        external_eta                  => Atm%flagstruct%external_eta
+       is_ideal_case                 => Atm%flagstruct%is_ideal_case
        read_increment                => Atm%flagstruct%read_increment
 
        hydrostatic                   => Atm%flagstruct%hydrostatic
@@ -976,6 +975,7 @@ module fv_control_mod
        deglat_stop                   => Atm%flagstruct%deglat_stop
 
        deglat                        => Atm%flagstruct%deglat
+       domain_deg                    => Atm%flagstruct%domain_deg
 
        nested                        => Atm%neststruct%nested
        twowaynest                    => Atm%neststruct%twowaynest
@@ -998,6 +998,9 @@ module fv_control_mod
        write_only_coarse_intermediate_restarts => Atm%coarse_graining%write_only_coarse_intermediate_restarts
        write_coarse_agrid_vel_rst    => Atm%coarse_graining%write_coarse_agrid_vel_rst
        write_coarse_dgrid_vel_rst    => Atm%coarse_graining%write_coarse_dgrid_vel_rst
+       restart_from_agrid_winds      => Atm%flagstruct%restart_from_agrid_winds
+       write_optional_dgrid_vel_rst  => Atm%flagstruct%write_optional_dgrid_vel_rst
+       pass_full_omega_to_physics_in_non_hydrostatic_mode => Atm%flagstruct%pass_full_omega_to_physics_in_non_hydrostatic_mode
      end subroutine set_namelist_pointers
 
 
@@ -1065,33 +1068,37 @@ module fv_control_mod
        character(len=128) :: res_latlon_dynamics = ''
        character(len=128) :: res_latlon_tracers  = ''
 
+       character(len=72) :: err_str
+
        namelist /fv_core_nml/npx, npy, ntiles, npz, npz_type, fv_eta_file, npz_rst, layout, io_layout, ncnst, nwat,  &
             use_logp, p_fac, a_imp, k_split, n_split, m_split, q_split, print_freq, write_3d_diags, &
             do_schmidt, do_cube_transform, &
             hord_mt, hord_vt, hord_tm, hord_dp, hord_tr, shift_fac, stretch_fac, target_lat, target_lon, &
-            kord_mt, kord_wz, kord_tm, kord_tr, fv_debug, fv_timers, fv_land, nudge, do_sat_adj, do_inline_mp, do_f3d, &
-            external_ic, read_increment, ncep_ic, nggps_ic, hrrrv3_ic, ecmwf_ic, use_new_ncep, use_ncep_phy, fv_diag_ic, &
-            external_eta, res_latlon_dynamics, res_latlon_tracers, scale_z, w_max, z_min, lim_fac, &
-            dddmp, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, &
+            kord_mt, kord_wz, kord_tm, kord_tr, remap_te, fv_debug, fv_land, &
+            do_am4_remap, nudge, do_f3d, external_ic, is_ideal_case, read_increment, &
+            ncep_ic, nggps_ic, hrrrv3_ic, ecmwf_ic, use_gfsO3, use_new_ncep, use_ncep_phy, fv_diag_ic, &
+            external_eta, res_latlon_dynamics, res_latlon_tracers, scale_z, w_max, z_min, d2bg_zq, lim_fac, &
+            dddmp, smag2d, d2_bg, d4_bg, vtdm4, trdm2, d_ext, delt_max, beta, non_ortho, n_sponge, &
             warm_start, adjust_dry_mass, mountain, d_con, ke_bg, nord, nord_tr, convert_ke, use_old_omega, &
-            dry_mass, grid_type, do_Held_Suarez, do_reed_physics, reed_cond_only, &
+            dry_mass, grid_type, do_Held_Suarez, &
             consv_te, fill, filter_phys, fill_dp, fill_wz, fill_gfs, consv_am, RF_fast, &
             range_warn, dwind_2d, inline_q, z_tracer, reproduce_sum, adiabatic, do_vort_damp, no_dycore,   &
-            tau, tau_w, fast_tau_w_sec, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, sg_cutoff, breed_vortex_inline,  &
+            tau, fast_tau_w_sec, tau_h2o, rf_cutoff, nf_omega, hydrostatic, fv_sg_adj, sg_cutoff, breed_vortex_inline,  &
             na_init, nudge_dz, hybrid_z, Make_NH, n_zs_filter, nord_zs_filter, full_zs_filter, reset_eta,         &
             pnats, dnats, dnrts, a2b_ord, remap_t, p_ref, d2_bg_k1, d2_bg_k2,  &
-            c2l_ord, dx_const, dy_const, umax, deglat,      &
+            c2l_ord, dx_const, dy_const, umax, deglat, domain_deg,     &
             deglon_start, deglon_stop, deglat_start, deglat_stop, &
-            phys_hydrostatic, use_hydro_pressure, make_hybrid_z, old_divg_damp, add_noise, butterfly_effect, &
-            molecular_diffusion, dz_min, psm_bc, nested, twowaynest, nudge_qv, &
-            nestbctype, nestupdate, upoff, nsponge, s_weight, &
-            check_negative, nudge_ic, halo_update_type, gfs_phil, agrid_vel_rst,     &
-            do_uni_zfull, adj_mass_vmr, fac_n_spl, fhouri, update_blend, regional, bc_update_interval,  &
-            regional_bcs_from_gsi, write_restart_with_bcs, nrows_blend,  &
-            write_coarse_restart_files,&
-            write_coarse_diagnostics,&
+            phys_hydrostatic, use_hydro_pressure, make_hybrid_z, old_divg_damp, add_noise, &
+            nested, twowaynest, nudge_qv, &
+            nestbctype, nestupdate, nsponge, s_weight, &
+            check_negative, nudge_ic, halo_update_type, gfs_phil, agrid_vel_rst, &
+            do_uni_zfull, adj_mass_vmr, update_blend, regional,&
+            bc_update_interval,  nrows_blend, write_restart_with_bcs, regional_bcs_from_gsi, &
+            w_limiter, write_coarse_restart_files, write_coarse_diagnostics,&
             write_only_coarse_intermediate_restarts, &
-            write_coarse_agrid_vel_rst, write_coarse_dgrid_vel_rst, ignore_rst_cksum
+            write_coarse_agrid_vel_rst, write_coarse_dgrid_vel_rst, &
+            restart_from_agrid_winds, write_optional_dgrid_vel_rst, &
+            pass_full_omega_to_physics_in_non_hydrostatic_mode, ignore_rst_cksum
 
 
        ! Read FVCORE namelist
@@ -1198,7 +1205,6 @@ module fv_control_mod
 198    format(A,i2.2,A,i4.4,'x',i4.4,'x',i1.1,'-',f9.3)
 199    format(A,i3.3)
 
-       !if (.not. (nested .or. regional)) alpha = alpha*pi  !TODO for test_case_nml
 
        !allocate(Atm%neststruct%child_grids(size(Atm))) !TODO want to remove
        !Atm(N)%neststruct%child_grids = .false.
@@ -1206,7 +1212,51 @@ module fv_control_mod
        target_lon = target_lon * pi/180.
        target_lat = target_lat * pi/180.
 
+       !Checks for deprecated options
+       if (abs(kord_tr) <= 7) then
+          write(err_str,'(A, i2, A)') "**DEPRECATED KORD_TR = ", kord_tr, "**"
+          call mpp_error(NOTE, trim(err_str))
+          call mpp_error(NOTE, " The old PPM remapping operators will be removed in a future release.")
+       endif
+       if (.not. hydrostatic .and. abs(kord_wz) <= 7) then
+          write(err_str,'(A, i2, A)') "**DEPRECATED KORD_WZ = ", kord_wz, "**"
+          call mpp_error(NOTE, trim(err_str))
+          call mpp_error(NOTE, " The old PPM remapping operators will be removed in a future release.")
+       endif
+       if (abs(kord_tm) <= 7) then
+          write(err_str,'(A, i2, A)') "**DEPRECATED KORD_TM = ", kord_tm, "**"
+          call mpp_error(NOTE, trim(err_str))
+          call mpp_error(NOTE, " The old PPM remapping operators will be removed in a future release.")
+       endif
+       if (abs(kord_mt) <= 7) then
+          write(err_str,'(A, i2, A)') "**DEPRECATED KORD_MT = ", kord_mt, "**"
+          call mpp_error(NOTE, trim(err_str))
+          call mpp_error(NOTE, " The old PPM remapping operators will be removed in a future release.")
+       endif
+
+       if (do_am4_remap) then
+          call mpp_error(NOTE, "** DEPRECATED DO_AM4_REMAP **")
+          call mpp_error(NOTE, " This switch is no longer necessary because the AM4 kord=10 has been")
+          call mpp_error(NOTE, "     restored to normal operation.")
+       endif
+
+
      end subroutine read_namelist_fv_core_nml
+
+     subroutine read_namelist_integ_phys_nml
+
+       integer :: ios, ierr
+       namelist /integ_phys_nml/ do_sat_adj, do_fast_phys, do_intermediate_phys, do_inline_mp, do_aerosol, do_cosp, consv_checker, te_err, tw_err
+
+       read (input_nml_file,integ_phys_nml,iostat=ios)
+       ierr = check_nml_error(ios,'integ_phys_nml')
+
+       call write_version_number ( 'FV_CONTROL_MOD', version )
+       unit = stdlog()
+       write(unit, nml=integ_phys_nml)
+
+       !Basic option processing
+     end subroutine read_namelist_integ_phys_nml
 
      subroutine setup_update_regions
 
@@ -1334,8 +1384,6 @@ module fv_control_mod
 
     integer :: n
 
-    call timing_off('TOTAL')
-    call timing_prt( mpp_pe() )
 
     call fv_restart_end(Atm(this_grid), restart_endfcst)
     call fv_io_exit()

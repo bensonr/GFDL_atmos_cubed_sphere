@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -118,18 +118,16 @@ module fv_nesting_mod
    use fv_arrays_mod,       only: allocate_fv_nest_BC_type, fv_atmos_type, fv_grid_bounds_type, deallocate_fv_nest_BC_type
    use fv_grid_utils_mod,   only: ptop_min, g_sum, cubed_to_latlon, f_p
    use init_hydro_mod,      only: p_var
-#ifdef OVERLOAD_R4
-   use constantsR4_mod,       only: grav, pi=>pi_8, radius, hlv, rdgas, cp_air, rvgas, cp_vapor, kappa
-#else
-   use constants_mod,       only: grav, pi=>pi_8, radius, hlv, rdgas, cp_air, rvgas, cp_vapor, kappa
-#endif
-   use fv_mapz_mod,         only: mappm, remap_2d
+   use constants_mod,       only: grav, pi=>pi_8, hlv, rdgas, cp_air, rvgas, cp_vapor, kappa
+   use fv_arrays_mod,       only: radius ! scaled for small earth
+   use fv_mapz_mod,         only: mappm
    use fv_timing_mod,       only: timing_on, timing_off
    use fv_mp_mod,           only: is_master
    use fv_mp_mod,           only: mp_reduce_sum, global_nest_domain
    use fv_diagnostics_mod,  only: sphum_ll_fix, range_check
    use sw_core_mod,         only: divergence_corner, divergence_corner_nest
    use time_manager_mod,    only: time_type
+   use gfdl_mp_mod,         only: c_liq, c_ice
 
 implicit none
    logical :: RF_initialized = .false.
@@ -1347,7 +1345,7 @@ end subroutine dealloc_nested_buffers
 
          call mappm(npz_coarse, peln_lag, var_lagBC(istart:iend,j:j,:), &
                     npz, peln_eul, var_eulBC(istart:iend,j:j,:), &
-                    istart, iend, iv, kord, pe_eulBC(istart,j,1))
+                    istart, iend, iv, kord)
 
       enddo
 
@@ -1358,7 +1356,7 @@ end subroutine dealloc_nested_buffers
 
          call mappm(npz_coarse, pe_lagBC(istart:iend,j:j,:), var_lagBC(istart:iend,j:j,:), &
                     npz, pe_eulBC(istart:iend,j:j,:), var_eulBC(istart:iend,j:j,:), &
-                    istart, iend, iv, kord, pe_eulBC(istart,j,1))
+                    istart, iend, iv, kord)
          !!! NEED A FILLQ/FILLZ CALL HERE??
 
       enddo
@@ -1492,9 +1490,7 @@ end subroutine dealloc_nested_buffers
    integer, intent(IN) :: npx, npy, npz
    real, intent(IN) :: zvir
 
-    real, parameter:: c_liq = 4185.5      !< heat capacity of water at 0C
-    real, parameter:: c_ice = 1972.       !< heat capacity of ice at 0C: c=c_ice+7.3*(T-Tice)
-    real, parameter:: cv_vap = cp_vapor - rvgas  !< 1384.5
+    real, parameter:: cv_vap = cp_vapor - rvgas  ! 1384.5
 
    real, dimension(:,:,:), pointer :: liq_watBC_west, ice_watBC_west, rainwatBC_west, snowwatBC_west, graupelBC_west, hailwatBC_west
    real, dimension(:,:,:), pointer :: liq_watBC_east, ice_watBC_east, rainwatBC_east, snowwatBC_east, graupelBC_east, hailwatBC_east
@@ -1751,8 +1747,6 @@ end subroutine dealloc_nested_buffers
    integer :: i,j,k
    real :: dp1, q_con, q_sol, q_liq, cvm, pkz, rdg, cv_air
 
-   real, parameter:: c_liq = 4185.5      ! heat capacity of water at 0C
-   real, parameter:: c_ice = 1972.       ! heat capacity of ice at 0C: c=c_ice+7.3*(T-Tice)
    real, parameter:: cv_vap = cp_vapor - rvgas  ! 1384.5
    real, parameter:: tice = 273.16 ! For GFS Partitioning
    real, parameter:: t_i0 = 15.
@@ -2864,7 +2858,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          !remap_2d seems to have some bugs when doing logp remapping
          call    mappm(npz_src, peln_src, var_src(istart:iend,j:j,:), &
                        npz_dst, peln_dst, var_dst_unblend, &
-                       istart, iend, iv, kord, peln_dst(istart,1))
+                       istart, iend, iv, kord)
 
          do k=1,npz_dst
             bw1 = blend_wt(k)
@@ -2883,7 +2877,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
 
          call mappm(npz_src, pe_src, var_src(istart:iend,j:j,:), &
                     npz_dst, pe_dst, var_dst_unblend, &
-                    istart, iend, iv, kord, pe_dst(istart,1))
+                    istart, iend, iv, kord)
 
          do k=1,npz_dst
             bw1 = blend_wt(k)
@@ -3052,7 +3046,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
            qp(i,k) = q_dst(i,j,k,iq)
         enddo
         enddo
-        call mappm(kmd, pe0, qp, npz, pe1,  qn1, is,ie, 0, kord_tr, ptop) !not sure about indices
+        call mappm(kmd, pe0, qp, npz, pe1,  qn1, is,ie, 0, kord_tr) !not sure about indices
         do k=1,npz
            do i=istart,iend
               q_dst(i,j,k,iq) = qn1(i,k)
@@ -3067,7 +3061,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
         enddo
      enddo
      !Remap T using logp
-     call mappm(kmd, pn0(istart:iend,:), tp(istart:iend,:), npz, pn1(istart:iend,:), qn1(istart:iend,:), istart,iend, 1, abs(kord_tm), ptop)
+     call mappm(kmd, pn0(istart:iend,:), tp(istart:iend,:), npz, pn1(istart:iend,:), qn1(istart:iend,:), istart,iend, 1, abs(kord_tm))
 
      do k=1,npz
         wt1 = blend_wt(k)
@@ -3085,7 +3079,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
         enddo
         !Remap w using p
         !Using iv == -1 instead of -2
-        call mappm(kmd, pe0(istart:iend,:), tp(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_wz, ptop)
+        call mappm(kmd, pe0(istart:iend,:), tp(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_wz)
 
         do k=1,npz
            wt1 = blend_wt(k)
@@ -3175,7 +3169,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          enddo
       enddo
       qn1 = 0.
-      call mappm(kmd, pe0(istart:iend,:), qt(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_mt, ptop)
+      call mappm(kmd, pe0(istart:iend,:), qt(istart:iend,:), npz, pe1(istart:iend,:), qn1(istart:iend,:), istart,iend, -1, kord_mt)
       do k=1,npz
          wt1 = blend_wt(k)
          wt2 = 1. - wt1
@@ -3196,7 +3190,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
 !------
 ! map v
 !------
-!$OMP parallel do default(none) shared(js,je,kmd,is,ie,ak_dst,bk_dst,ps_dst,u_dst,v_dst,ak_src,bk_src,ps_src,npz,u_src,v_src,ptop,istart,iend_v,jstart,jend,blend_wt) &
+!$OMP parallel do default(none) shared(js,je,kmd,is,ie,ak_dst,bk_dst,ps_dst,u_dst,v_dst,ak_src,bk_src,ps_src,npz,u_src,v_src,ptop,istart,iend_v,jstart,jend,blend_wt,kord_mt) &
 !$OMP          private(pe0,pe1,qt,qn1,wt1,wt2)
    do j=jstart,jend
 !------
@@ -3225,7 +3219,7 @@ subroutine twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, Time, this_grid)
          enddo
       enddo
       qn1 = 0.
-      call mappm(kmd, pe0(istart:iend_v+1,:), qt(istart:iend_v+1,:), npz, pe1(istart:iend_v+1,:), qn1(istart:iend_v+1,:), istart,iend_v+1, -1, 8, ptop)
+      call mappm(kmd, pe0(istart:iend_v+1,:), qt(istart:iend_v+1,:), npz, pe1(istart:iend_v+1,:), qn1(istart:iend_v+1,:), istart,iend_v+1, -1, kord_mt)
       do k=1,npz
          wt1 = blend_wt(k)
          wt2 = 1. - wt1
