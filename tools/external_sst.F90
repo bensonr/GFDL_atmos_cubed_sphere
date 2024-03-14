@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -18,19 +18,12 @@
 !* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+
 module external_sst_mod
 
-#ifdef NO_GFDL_SHARED
-!----------------- Public Data -----------------------------------
-integer :: i_sst = -1
-integer :: j_sst = -1
-logical :: forecast_mode = .false.
-logical :: use_ncep_sst  = .false.
+use amip_interp_mod, only: i_sst, j_sst, forecast_mode, use_ncep_sst
+
 real, allocatable, dimension(:,:) ::  sst_ncep, sst_anom
-#else
-use amip_interp_mod, only: i_sst, j_sst, sst_ncep, sst_anom, &
-                           forecast_mode, use_ncep_sst
-#endif
 
 public i_sst, j_sst, sst_ncep, sst_anom, forecast_mode, use_ncep_sst
 

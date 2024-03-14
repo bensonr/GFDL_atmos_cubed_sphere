@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -272,11 +272,11 @@
 
         print *
         print *,                                  &
-        '  -----------------------------------------------------'
+        '  ---------------------------------------------------------------------'
         print *,                                  &
-        '     Block                    User time  System Time   Total Time   GID '
+        '  Block                     User time  System Time   Total Time     GID'
         print *,                                  &
-        '  -----------------------------------------------------'
+        '  ---------------------------------------------------------------------'
 
         do n = 1, tblk
            print '(3x,a20,2x,3(1x,f12.4), 2x, I6)', blkname(n),     &

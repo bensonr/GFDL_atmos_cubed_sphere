@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -64,7 +64,7 @@ module fv_eta_mod
       integer,  intent(in)::  km           ! vertical dimension
       integer,  intent(out):: ks           ! number of pure p layers
       real:: a60(61),b60(61)
-! Thfollowing L63 setting is the same as NCEP GFS's L64 except the top
+! The following L63 setting is the same as NCEP GFS's L64 except the top
 ! 3 layers
       data a60/300.0000,     430.00000,     558.00000,    &
               700.00000,     863.05803,    1051.07995,    &
@@ -630,6 +630,15 @@ module fv_eta_mod
             enddo
 
          endif
+
+         ! xi chen's l65
+      case (65)
+         ks = 29
+         do k=1,km+1
+            ak(k) = a65(k)
+            bk(k) = b65(k)
+         enddo
+
          !-->cjg
       case (68)
          ks = 27
@@ -642,11 +651,24 @@ module fv_eta_mod
          ptop = 1.
          stretch_fac = 1.03
          auto_routine = 1
-      case (75)   ! HS-SGO test configuration
-         pint = 100.E2
-         ptop = 10.E2
-         stretch_fac = 1.035
-         auto_routine = 6
+
+      ! kgao: introduce EMC's L75 config
+      case (75)
+         if (trim(npz_type) == 'emc') then
+           ! EMC's L75 config
+           ks = 12
+           do k=1,km+1
+              ak(k) = a75(k)
+              bk(k) = b75(k)
+           enddo
+         else
+           ! HS-SGO test configuration
+           pint = 100.E2
+           ptop = 10.E2
+           stretch_fac = 1.035
+           auto_routine = 6
+         endif
+
       case (79)               ! N = 10, M=5
          if (trim(npz_type) == 'gcrm') then
            pint = 100.E2
@@ -685,6 +707,14 @@ module fv_eta_mod
          enddo
          !<--cjg
 
+      ! kgao L88
+      case (88)
+         ks = 20 !19 bug fix
+         do k=1,km+1
+            ak(k) = a88(k)
+            bk(k) = b88(k)
+         enddo
+
       case (100)
          ks = 38
          do k=1,km+1
@@ -714,6 +744,14 @@ module fv_eta_mod
             ptop = 1.
             stretch_fac = 1.03
             auto_routine = 2
+         elseif (trim(npz_type) == 'gfs') then
+            ks = 39
+            ptop = a127(1)
+            pint = a127(ks+1)
+            do k=1,km+1
+               ak(k) = a127(k)
+               bk(k) = b127(k)
+            enddo
          else
             ptop = 1.
             pint = 75.E2
@@ -778,6 +816,7 @@ module fv_eta_mod
    call check_eta_levels (ak, bk)
 
    if (is_master()) then
+      print*, ' SET_ETA: vertical level interfaces'
       write(*, '(A4, A13, A13, A11)') 'klev', 'ak', 'bk', 'p_ref'
       do k=1,km+1
          write(*,'(I4, F13.5, F13.5, F11.2)') k, ak(k), bk(k), 1000.E2*bk(k) + ak(k)
@@ -963,7 +1002,7 @@ module fv_eta_mod
           do k=ks+1,km
              tmp1 = max(tmp1, (ak(k)-ak(k+1))/max(1.E-5, (bk(k+1)-bk(k))) )
           enddo
-          write(*,*) 'Hybrid Sigma-P: minimum allowable surface pressure (hpa)=', tmp1/100.
+          write(*,'(A, F8.2)') 'Hybrid Sigma-P: minimum allowable surface pressure (hpa)=', tmp1/100.
           write(*,800) (pm(k), k=km,1,-1)
       endif
 
@@ -1888,7 +1927,7 @@ module fv_eta_mod
 
   if (.not. monotonic) then
     if (is_master()) then
-       write(*, '(A4, A13, A13, A11)') 'klev', 'ak', 'bk', 'p_ref'
+       write(*, '(A4, A13, A13, A11)') 'klev', 'ak', 'bk', 'p_ref (Pa)'
        do k=1,nlev
           write(*,'(I4, F13.5, F13.5, F11.2)') k, ak(k), bk(k), ak(k) + bk(k)*1000.E2
        enddo

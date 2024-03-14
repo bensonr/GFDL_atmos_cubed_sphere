@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -18,6 +18,7 @@
 !* License along with the FV3 dynamical core.
 !* If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+
  module fv_surf_map_mod
 
 ! <table>
@@ -67,7 +68,7 @@
       use fms2_io_mod,       only: file_exists
       use mpp_mod,           only: get_unit, input_nml_file, mpp_error
       use mpp_domains_mod,   only: mpp_update_domains, domain2d
-      use constants_mod,     only: grav, radius, pi=>pi_8
+      use constants_mod,     only: grav, pi=>pi_8
 
       use fv_grid_utils_mod, only: great_circle_dist, latlon2xyz, v_prod, normalize_vect
       use fv_grid_utils_mod, only: g_sum, global_mx, vect_cross
@@ -113,7 +114,6 @@
       character(len=6)  ::  surf_format = 'netcdf'
       logical :: namelist_read = .false.
 
-      real(kind=R_GRID) da_min
       real cos_grid
       character(len=3) :: grid_string = ''
 
@@ -164,7 +164,7 @@
       real(kind=4), allocatable ::  ft(:,:), zs(:,:)
       real, allocatable :: lon1(:),  lat1(:)
       real dx1, dx2, dy1, dy2, lats, latn, r2d
-      real(kind=R_GRID) da_max
+      real(kind=R_GRID) da_max, da_min
       real zmean, z2mean, delg, rgrav
 !     real z_sp, f_sp, z_np, f_np
       integer i, j, n, mdim
@@ -523,10 +523,10 @@
       real(kind=R_GRID), intent(IN):: stretch_fac
       logical, intent(IN) :: bounded_domain
       real, intent(inout):: phis(isd:ied,jsd,jed)
-      real, intent(in):: oro(isd:ied,jsd,jed)
+      real, intent(inout):: oro(isd:ied,jsd,jed)
       type(domain2d), intent(INOUT) :: domain
       integer mdim
-      real(kind=R_GRID) da_max
+      real(kind=R_GRID) da_max, da_min
 
       if (is_master()) print*, ' Calling FV3_zs_filter...'
 
@@ -1191,9 +1191,8 @@
 
  end subroutine del4_cubed_sphere
 
-
  subroutine map_to_cubed_raw(igh, im, jt, lat1, lon1, zs, ft,  grid, agrid,  &
-                              q2, f2, h2, npx, npy, jstart, jend, stretch_fac, &
+                              phis, oro, sgh, npx, npy, jstart, jend, stretch_fac, &
                               bounded_domain, npx_global, bd)
 
 ! Input
@@ -1209,9 +1208,9 @@
       real(kind=R_GRID), intent(IN) :: stretch_fac
       logical, intent(IN) :: bounded_domain
 ! Output
-      real, intent(out):: q2(bd%isd:bd%ied,bd%jsd:bd%jed) !< Mapped data at the target resolution
-      real, intent(out):: f2(bd%isd:bd%ied,bd%jsd:bd%jed) !< oro
-      real, intent(out):: h2(bd%isd:bd%ied,bd%jsd:bd%jed) !< variances of terrain
+      real, intent(out):: phis(bd%isd:bd%ied,bd%jsd:bd%jed) ! phis (surface geopotential) mapped data at the target resolution
+      real, intent(out):: oro(bd%isd:bd%ied,bd%jsd:bd%jed) ! oro (land mask)
+      real, intent(out):: sgh(bd%isd:bd%ied,bd%jsd:bd%jed) ! sgh variances of terrain
 ! Local
       real :: lon_g(-igh:im+igh)
       real lat_g(jt), cos_g(jt)
@@ -1348,23 +1347,23 @@
                (i < is .and. j > je) .or. &
                (i > ie .and. j < js) .or. &
                (i > ie .and. j > je)) .and. .not. bounded_domain) then
-             q2(i,j) = 1.e25
-             f2(i,j) = 1.e25
-             h2(i,j) = 1.e25
+             phis(i,j) = 1.e25
+             oro(i,j) = 1.e25
+             sgh(i,j) = 1.e25
              goto 4444
           end if
 
           if ( agrid(i,j,2) < -pi5+stretch_fac*pi5/real(npx_global-1) ) then
 ! SP:
-               q2(i,j) = qsp
-               f2(i,j) = fsp
-               h2(i,j) = hsp
+               phis(i,j) = qsp
+               oro(i,j) = fsp
+               sgh(i,j) = hsp
                goto 4444
           elseif ( agrid(i,j,2) > pi5-stretch_fac*pi5/real(npx_global-1) ) then
 ! NP:
-               q2(i,j) = qnp
-               f2(i,j) = fnp
-               h2(i,j) = hnp
+               phis(i,j) = qnp
+               oro(i,j) = fnp
+               sgh(i,j) = hnp
                goto 4444
           endif
 
@@ -1463,9 +1462,9 @@
             enddo
 
             if ( np > 0 ) then
-                 q2(i,j) = qsum / asum
-                 f2(i,j) = fsum / asum
-                 h2(i,j) = hsum / real(np) - q2(i,j)**2
+                 phis(i,j) = qsum / asum
+                 oro(i,j) = fsum / asum
+                 sgh(i,j) = hsum / real(np) - phis(i,j)**2
                  min_pts = min(min_pts, np)
             else
                  write(*,*) 'min and max lat_g is ', r2d*minval(lat_g), r2d*maxval(lat_g), mpp_pe()
@@ -1536,7 +1535,7 @@
 
       if (status .ne. nf_noerr) then
         print *, nf_strerror(status)
-        stop 'Stopped'
+        stop 'fv_surf_map_mod: Stopped due to file error'
       endif
 
  end subroutine  handle_err

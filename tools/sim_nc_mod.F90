@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -378,6 +378,14 @@ module sim_nc_mod
       check_var = (status == NF_NOERR)
 
       end function check_var
+
+      subroutine check_var_exists(ncid, var_name, status)
+      integer, intent(in):: ncid
+      integer, intent(inout) :: status
+      character(len=*), intent(in)::  var_name
+      integer:: varid
+      status = nf_inq_varid (ncid, var_name, varid)
+      end subroutine check_var_exists
 
       subroutine get_var_att_str(ncid, var_name, att_name, att)
       implicit none

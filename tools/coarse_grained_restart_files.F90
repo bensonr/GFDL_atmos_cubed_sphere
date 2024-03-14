@@ -1,13 +1,34 @@
+!***********************************************************************
+!*                   GNU Lesser General Public License
+!*
+!* This file is part of the FV3 dynamical core.
+!*
+!* The FV3 dynamical core is free software: you can redistribute it
+!* and/or modify it under the terms of the
+!* GNU Lesser General Public License as published by the
+!* Free Software Foundation, either version 3 of the License, or
+!* (at your option) any later version.
+!*
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+!* See the GNU General Public License for more details.
+!*
+!* You should have received a copy of the GNU Lesser General Public
+!* License along with the FV3 dynamical core.
+!* If not, see <http://www.gnu.org/licenses/>.
+!***********************************************************************
+
 module coarse_grained_restart_files_mod
 
   use coarse_graining_mod, only: compute_mass_weights, get_coarse_array_bounds,&
        get_fine_array_bounds, MODEL_LEVEL, PRESSURE_LEVEL, weighted_block_average, &
        weighted_block_edge_average_x, weighted_block_edge_average_y, &
-       mask_area_weights, mask_mass_weights, block_upsample, remap_edges_along_x, &
+       mask_area_weights, block_upsample, remap_edges_along_x, &
        remap_edges_along_y, vertically_remap_field
   use constants_mod, only: GRAV, RDGAS, RVGAS
   use field_manager_mod, only: MODEL_ATMOS
-  use fms2_io_mod,      only: register_restart_field, write_restart, open_file, close_file
+  use fms2_io_mod,      only: register_restart_field, write_restart, open_file, close_file, register_variable_attribute, variable_exists
   use fv_arrays_mod, only: coarse_restart_type, fv_atmos_type
   use mpp_domains_mod, only: domain2d, EAST, NORTH, CENTER, mpp_update_domains
   use mpp_mod, only: FATAL, mpp_error
@@ -210,34 +231,78 @@ contains
       if (write_coarse_dgrid_vel_rst) then
          call register_restart_field(restart%fv_core_coarse, &
               'u', restart%u, dim_names_4d)
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'u', "long_name", "u", str_len=len("u"))
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'u', "units", "none", str_len=len("none"))
          call register_restart_field(restart%fv_core_coarse, &
               'v', restart%v, dim_names_4d2)
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'v', "long_name", "v", str_len=len("v"))
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'v', "units", "none", str_len=len("none"))
       endif
 
       if (write_coarse_agrid_vel_rst) then
          call register_restart_field(restart%fv_core_coarse, &
               'ua', restart%ua, dim_names_4d3)
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'ua', "long_name", "ua", str_len=len("ua"))
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'ua', "units", "none", str_len=len("none"))
          call register_restart_field(restart%fv_core_coarse, &
               'va', restart%va, dim_names_4d3)
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'va', "long_name", "va", str_len=len("va"))
+         call register_variable_attribute(restart%fv_core_coarse, &
+              'va', "units", "none", str_len=len("none"))
       endif
 
       if (.not. hydrostatic) then
          call register_restart_field(restart%fv_core_coarse, &
               'W', restart%w, dim_names_4d3, is_optional=.true.)
+         if (variable_exists(restart%fv_core_coarse, 'W')) then
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'W', "long_name", "W", str_len=len("W"))
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'W', "units", "none", str_len=len("none"))
+         endif
          call register_restart_field(restart%fv_core_coarse, &
               'DZ', restart%delz, dim_names_4d3, is_optional=.true.)
+         if (variable_exists(restart%fv_core_coarse, 'DZ')) then
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'DZ', "long_name", "DZ", str_len=len("DZ"))
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'DZ', "units", "none", str_len=len("none"))
+         endif
          if (hybrid_z) then
             call register_restart_field(restart%fv_core_coarse, &
                  'ZE0', restart%ze0, dim_names_4d3, is_optional=.false.)
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'ZE0', "long_name", "ZE0", str_len=len("ZE0"))
+            call register_variable_attribute(restart%fv_core_coarse, &
+                 'ZE0', "units", "none", str_len=len("none"))
          endif
       endif
 
       call register_restart_field(restart%fv_core_coarse, &
            'T', restart%pt, dim_names_4d3)
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'T', "long_name", "T", str_len=len("T"))
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'T', "units", "none", str_len=len("none"))
       call register_restart_field(restart%fv_core_coarse, &
            'delp', restart%delp, dim_names_4d3)
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'delp', "long_name", "delp", str_len=len("delp"))
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'delp', "units", "none", str_len=len("none"))
       call register_restart_field(restart%fv_core_coarse, &
            'phis', restart%phis, dim_names_3d)
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'phis', "long_name", "phis", str_len=len("phis"))
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'phis', "units", "none", str_len=len("none"))
     endif
   end subroutine register_fv_core_coarse
 
@@ -274,6 +339,12 @@ contains
          call register_restart_field(restart%fv_tracer_coarse, &
               tracer_name, restart%q(:,:,:,n_tracer), dim_names_4d, &
               is_optional=.true.)
+         if (variable_exists(restart%fv_tracer_coarse, tracer_name)) then
+            call register_variable_attribute(restart%fv_tracer_coarse, &
+                 tracer_name, "long_name", tracer_name, str_len=len(tracer_name))
+            call register_variable_attribute(restart%fv_tracer_coarse, &
+                 tracer_name, "units", "none", str_len=len("none"))
+         endif
       enddo
 
       do n_tracer = n_prognostic_tracers + 1, n_tracers
@@ -282,6 +353,12 @@ contains
          call register_restart_field(restart%fv_tracer_coarse, &
               tracer_name, restart%qdiag(:,:,:,n_tracer), dim_names_4d, &
               is_optional=.true.)
+         if (variable_exists(restart%fv_tracer_coarse, tracer_name)) then
+            call register_variable_attribute(restart%fv_tracer_coarse, &
+                 tracer_name, "long_name", tracer_name, str_len=len(tracer_name))
+            call register_variable_attribute(restart%fv_tracer_coarse, &
+                 tracer_name, "units", "none", str_len=len("none"))
+         endif
       enddo
     endif
   end subroutine register_fv_tracer_coarse
@@ -311,8 +388,16 @@ contains
 
       call register_restart_field(restart%fv_srf_wnd_coarse, &
            'u_srf', restart%u_srf, dim_names_3d)
+      call register_variable_attribute(restart%fv_srf_wnd_coarse, &
+           'u_srf', "long_name", "u_srf", str_len=len("u_srf"))
+      call register_variable_attribute(restart%fv_srf_wnd_coarse, &
+           'u_srf', "units", "none", str_len=len("none"))
       call register_restart_field(restart%fv_srf_wnd_coarse, &
            'v_srf', restart%v_srf, dim_names_3d)
+      call register_variable_attribute(restart%fv_srf_wnd_coarse, &
+           'v_srf', "long_name", "v_srf", str_len=len("v_srf"))
+      call register_variable_attribute(restart%fv_srf_wnd_coarse, &
+           'v_srf', "units", "none", str_len=len("none"))
     endif
   end subroutine register_fv_srf_wnd_coarse
 
@@ -341,6 +426,10 @@ contains
 
       call register_restart_field(restart%mg_drag_coarse, &
           'ghprime', restart%sgh, dim_names_3d)
+      call register_variable_attribute(restart%mg_drag_coarse, &
+          'ghprime', "long_name", "ghprime", str_len=len("ghprime"))
+      call register_variable_attribute(restart%mg_drag_coarse, &
+          'ghprime', "units", "none", str_len=len("none"))
     endif
   end subroutine register_mg_drag_coarse
 
@@ -369,6 +458,10 @@ contains
 
       call register_restart_field(restart%fv_land_coarse, &
           'oro', restart%oro, dim_names_3d)
+      call register_variable_attribute(restart%fv_land_coarse, &
+           'oro', "long_name", "oro", str_len=len("oro"))
+      call register_variable_attribute(restart%fv_core_coarse, &
+           'oro', "units", "none", str_len=len("none"))
     endif
   end subroutine register_fv_land_coarse
 
@@ -408,23 +501,22 @@ contains
      type(fv_atmos_type), intent(inout) :: Atm
 
      real, allocatable, dimension(:,:,:):: phalf, coarse_phalf, coarse_phalf_on_fine
-     real, allocatable, dimension(:,:,:) :: masked_mass_weights, masked_area_weights
+     real, allocatable, dimension(:,:,:) :: masked_area_weights
 
      allocate(phalf(is-1:ie+1,js-1:je+1,1:npz+1))  ! Require the halo here for the winds
      allocate(coarse_phalf(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz+1))
      allocate(coarse_phalf_on_fine(is:ie,js:je,1:npz+1))
-     allocate(masked_mass_weights(is:ie,js:je,1:npz))
      allocate(masked_area_weights(is:ie,js:je,1:npz))
 
      ! delp and delz are coarse-grained on model levels; u, v, W, T, and all the tracers
      ! are all remapped to surfaces of constant pressure within coarse grid cells before
      ! coarse graining.  At the end, delz and phis are corrected to impose hydrostatic balance.
      call compute_pressure_level_coarse_graining_requirements( &
-       Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+       Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_area_weights)
      call coarse_grain_fv_core_restart_data_on_pressure_levels( &
-       Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+       Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_area_weights)
      call coarse_grain_fv_tracer_restart_data_on_pressure_levels( &
-       Atm, phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+       Atm, phalf, coarse_phalf_on_fine, masked_area_weights)
      call coarse_grain_fv_srf_wnd_restart_data(Atm)
      if (Atm%flagstruct%fv_land) then
        call coarse_grain_mg_drag_restart_data(Atm)
@@ -521,12 +613,12 @@ contains
   end subroutine coarse_grain_fv_land_restart_data
 
   subroutine coarse_grain_fv_core_restart_data_on_pressure_levels(&
-     Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+     Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_area_weights)
      type(fv_atmos_type), intent(inout) :: Atm
      real, intent(in) :: phalf(is-1:ie+1,js-1:je+1,1:npz+1)
      real, intent(in) :: coarse_phalf(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz+1)
      real, intent(in) :: coarse_phalf_on_fine(is:ie,js:je,1:npz+1)
-     real, intent(in), dimension(is:ie,js:je,1:npz) :: masked_mass_weights, masked_area_weights
+     real, intent(in), dimension(is:ie,js:je,1:npz) :: masked_area_weights
 
      real, allocatable :: remapped(:,:,:)  ! Will re-use this to save memory
 
@@ -546,11 +638,11 @@ contains
      endif
 
      call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), Atm%pt(is:ie,js:je,1:npz), coarse_phalf_on_fine, Atm%ptop, remapped)
-     call weighted_block_average(masked_mass_weights, remapped, Atm%coarse_graining%restart%pt)
+     call weighted_block_average(masked_area_weights, remapped, Atm%coarse_graining%restart%pt)
 
      if (.not. Atm%flagstruct%hydrostatic) then
        call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), Atm%w(is:ie,js:je,1:npz), coarse_phalf_on_fine, Atm%ptop, remapped)
-       call weighted_block_average(masked_mass_weights, remapped, Atm%coarse_graining%restart%w)
+       call weighted_block_average(masked_area_weights, remapped, Atm%coarse_graining%restart%w)
        call weighted_block_average(Atm%gridstruct%area(is:ie,js:je), Atm%delz(is:ie,js:je,1:npz), Atm%coarse_graining%restart%delz)
        if (Atm%flagstruct%hybrid_z) then
           call weighted_block_average(Atm%gridstruct%area(is:ie,js:je), Atm%ze0(is:ie,js:je,1:npz), Atm%coarse_graining%restart%ze0)
@@ -561,44 +653,36 @@ contains
 
      if (Atm%coarse_graining%write_coarse_agrid_vel_rst) then
        call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), Atm%ua(is:ie,js:je,1:npz), coarse_phalf_on_fine, Atm%ptop, remapped)
-       call weighted_block_average(masked_mass_weights, remapped, Atm%coarse_graining%restart%ua)
+       call weighted_block_average(masked_area_weights, remapped, Atm%coarse_graining%restart%ua)
        call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), Atm%va(is:ie,js:je,1:npz), coarse_phalf_on_fine, Atm%ptop, remapped)
-       call weighted_block_average(masked_mass_weights, remapped, Atm%coarse_graining%restart%va)
+       call weighted_block_average(masked_area_weights, remapped, Atm%coarse_graining%restart%va)
      endif
   end subroutine coarse_grain_fv_core_restart_data_on_pressure_levels
 
   subroutine coarse_grain_fv_tracer_restart_data_on_pressure_levels( &
-     Atm, phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+     Atm, phalf, coarse_phalf_on_fine, masked_area_weights)
      type(fv_atmos_type), intent(inout) :: Atm
      real, intent(in) :: phalf(is-1:ie+1,js-1:je+1,1:npz+1)
      real, intent(in) :: coarse_phalf_on_fine(is:ie,js:je,1:npz+1)
-     real, intent(in), dimension(is:ie,js:je,1:npz) :: masked_mass_weights, masked_area_weights
+     real, intent(in), dimension(is:ie,js:je,1:npz) :: masked_area_weights
 
      real, allocatable :: remapped(:,:,:)
-     character(len=64) :: tracer_name
      integer :: n_tracer
 
      allocate(remapped(is:ie,js:je,1:npz))
 
      do n_tracer = 1, n_prognostic_tracers
-       call get_tracer_names(MODEL_ATMOS, n_tracer, tracer_name)
        call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), &
          Atm%q(is:ie,js:je,1:npz,n_tracer), coarse_phalf_on_fine, Atm%ptop, remapped)
-       if (trim(tracer_name) .eq. 'cld_amt') then
-         call weighted_block_average(masked_area_weights, &
-           remapped, &
-           Atm%coarse_graining%restart%q(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz,n_tracer))
-       else
-         call weighted_block_average(masked_mass_weights, &
-           remapped, &
-           Atm%coarse_graining%restart%q(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz,n_tracer))
-       endif
+       call weighted_block_average(masked_area_weights, &
+         remapped, &
+         Atm%coarse_graining%restart%q(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz,n_tracer))
      enddo
 
      do n_tracer = n_prognostic_tracers + 1, n_tracers
        call vertically_remap_field(phalf(is:ie,js:je,1:npz+1), &
          Atm%qdiag(is:ie,js:je,1:npz,n_tracer), coarse_phalf_on_fine, Atm%ptop, remapped)
-       call weighted_block_average(masked_mass_weights, &
+       call weighted_block_average(masked_area_weights, &
          remapped, &
          Atm%coarse_graining%restart%qdiag(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz,n_tracer))
      enddo
@@ -655,12 +739,12 @@ contains
    end subroutine impose_hydrostatic_balance
 
   subroutine compute_pressure_level_coarse_graining_requirements( &
-     Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_mass_weights, masked_area_weights)
+     Atm, phalf, coarse_phalf, coarse_phalf_on_fine, masked_area_weights)
      type(fv_atmos_type), intent(inout) :: Atm
      real, intent(out) :: phalf(is-1:ie+1,js-1:je+1,1:npz+1)
      real, intent(out) :: coarse_phalf(is_coarse:ie_coarse,js_coarse:je_coarse,1:npz+1)
      real, intent(out) :: coarse_phalf_on_fine(is:ie,js:je,1:npz+1)
-     real, intent(out), dimension(is:ie,js:je,1:npz) :: masked_mass_weights, masked_area_weights
+     real, intent(out), dimension(is:ie,js:je,1:npz) :: masked_area_weights
 
      ! Do a halo update on delp before proceeding here, because the remapping procedure
      ! for the winds requires interpolating across tile edges.
@@ -669,7 +753,6 @@ contains
      call weighted_block_average(Atm%gridstruct%area(is:ie,js:je), Atm%delp(is:ie,js:je,1:npz), Atm%coarse_graining%restart%delp)
      call compute_phalf(is_coarse, ie_coarse, js_coarse, je_coarse, Atm%coarse_graining%restart%delp, Atm%ptop, coarse_phalf)
      call block_upsample(coarse_phalf, coarse_phalf_on_fine, npz+1)
-     call mask_mass_weights(Atm%gridstruct%area(is:ie,js:je), Atm%delp(is:ie,js:je,1:npz), phalf(is:ie,js:je,1:npz+1), coarse_phalf_on_fine, masked_mass_weights)
      call mask_area_weights(Atm%gridstruct%area(is:ie,js:je), phalf(is:ie,js:je,1:npz+1), coarse_phalf_on_fine, masked_area_weights)
   end subroutine compute_pressure_level_coarse_graining_requirements
 

@@ -1,3 +1,24 @@
+!***********************************************************************
+!*                   GNU Lesser General Public License
+!*
+!* This file is part of the FV3 dynamical core.
+!*
+!* The FV3 dynamical core is free software: you can redistribute it
+!* and/or modify it under the terms of the
+!* GNU Lesser General Public License as published by the
+!* Free Software Foundation, either version 3 of the License, or
+!* (at your option) any later version.
+!*
+!* The FV3 dynamical core is distributed in the hope that it will be
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+!* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+!* See the GNU General Public License for more details.
+!*
+!* You should have received a copy of the GNU Lesser General Public
+!* License along with the FV3 dynamical core.
+!* If not, see <http://www.gnu.org/licenses/>.
+!***********************************************************************
+
 module fv_diag_column_mod
 
   use fv_arrays_mod,      only: fv_atmos_type, fv_grid_type, fv_diag_type, fv_grid_bounds_type, &
@@ -8,7 +29,7 @@ module fv_diag_column_mod
   use fms_mod,            only: write_version_number, lowercase
   use mpp_mod,            only: mpp_error, FATAL, stdlog, mpp_pe, mpp_root_pe, mpp_sum, &
                                 mpp_max, NOTE, input_nml_file, get_unit
-  use fv_sg_mod,          only: qsmith
+  use gfdl_mp_mod,        only: mqs3d
 
   implicit none
   private
@@ -38,6 +59,8 @@ module fv_diag_column_mod
  character(10) :: init_str
  real, parameter    ::     rad2deg = 180./pi
 
+ logical :: m_calendar
+
  public :: do_diag_debug_dyn, debug_column, debug_column_dyn, fv_diag_column_init, sounding_column
 
 
@@ -50,15 +73,17 @@ module fv_diag_column_mod
 
 contains
 
- subroutine fv_diag_column_init(Atm, yr_init, mo_init, dy_init, hr_init, do_diag_debug_out, do_diag_sonde_out, sound_freq_out)
+ subroutine fv_diag_column_init(Atm, yr_init, mo_init, dy_init, hr_init, do_diag_debug_out, do_diag_sonde_out, sound_freq_out, m_calendar_in)
 
    type(fv_atmos_type), intent(inout), target :: Atm
    integer, intent(IN) :: yr_init, mo_init, dy_init, hr_init
+   logical, intent(IN) :: m_calendar_in
    logical, intent(OUT) :: do_diag_debug_out, do_diag_sonde_out
    integer, intent(OUT) :: sound_freq_out
 
-   integer :: ios, nlunit
-   logical :: exists
+   integer :: ios
+
+   m_calendar = m_calendar_in
 
    call write_version_number ( 'FV_DIAG_COLUMN_MOD', version )
 
@@ -99,7 +124,6 @@ contains
     do_diag_debug_out = do_diag_debug
     do_diag_sonde_out = do_diag_sonde
     sound_freq_out    = sound_freq
-
 
  end subroutine fv_diag_column_init
 
@@ -151,6 +175,7 @@ contains
              print*, ' read_column_table: error on line ', nline
              call mpp_error(FATAL,'error in column_table format')
           endif
+
        else !debug or sonde record with specified lat-lon
           if (index(lowercase(record), "debug") .ne. 0 ) then
           if (num_diag_debug >= MAX_DIAG_COLUMN) continue
@@ -217,7 +242,7 @@ contains
        !Index specified
        if (diag_i(m) >= -10 .and. diag_j(m) >= -10) then
 
-          if ((diag_tile(m) < 0 .or. diag_tile(m) > ntiles)) then
+          if ((diag_tile(m) < 0)) then
              if (ntiles > 1) then
                 call mpp_error(FATAL, ' find_diagnostic_column: diag_tile must be specified for '//trim(diag_class)//' point '//trim(diag_names(m))//' since ntiles > 1')
              else
@@ -287,10 +312,9 @@ contains
        if (point_found) then
 
           !Initialize output file
-          diag_units(m) = get_unit()
           write(filename, 202) trim(diag_names(m)), trim(diag_class)
 202       format(A, '.', A, '.out')
-          open(diag_units(m), file=trim(filename), action='WRITE', position='rewind', iostat=io)
+          open(newunit=diag_units(m), file=trim(filename), action='WRITE', position='rewind', iostat=io)
           if(io/=0) call mpp_error(FATAL, ' find_diagnostic_column: Error in opening file '//trim(filename))
           !Print debug message
           write(*,'(A, 1x, A, 1x, 1x, A, 2F8.3, 2I5, I3, I04)') trim(diag_class), 'point: ', diag_names(m), diag_lon(m), diag_lat(m), diag_i(m), diag_j(m), diag_tile(m), mpp_pe()
@@ -321,7 +345,7 @@ contains
 
     rdg = -rdgas/grav
 
-    do n=1,size(diag_debug_i)
+    do n=1,size(diag_debug_units)
 
        i=diag_debug_i(n)
        j=diag_debug_j(n)
@@ -342,19 +366,42 @@ contains
 
        write(unit, *) "DEBUG POINT ",  diag_debug_names(n)
        write(unit, *)
-       call get_date(Time, yr, mon, dd, hr, mn, seconds)
-       write(unit, '(A, I6, A12, 4I4)') " Time: ", yr, month_name(mon), dd, hr, mn, seconds
+       if (m_calendar) then
+          call get_date(Time, yr, mon, dd, hr, mn, seconds)
+          write(unit, '(A, I6, A12, 4I4)') " Time: ", yr, month_name(mon), dd, hr, mn, seconds
+       else
+          call get_time (Time, seconds,  days)
+          write(unit, '(A, I6, I6)') " Time: ", days, seconds
+       endif
        write(unit, *)
        write(unit, '(A, F8.3, A, F8.3)') ' longitude = ', diag_debug_lon(n), ' latitude = ', diag_debug_lat(n)
        write(unit, '(A, I8, A, I6, A, I6, A, I3)') ' on processor # ', mpp_pe(), ' :  local i = ', i, ',   local j = ', j, ' tile = ', diag_debug_tile(n)
        write(unit, *)
 
-       write(unit,500) 'k', 'T', 'delp', 'delz',   'u',   'v',   'w', 'sphum', 'cond', 'pres', 'NHprime'!, 'pdry', 'NHpdry'
-       write(unit,500) ' ', 'K',   'mb',    'm', 'm/s', 'm/s', 'm/s',  'g/kg', 'g/kg', 'mb',   'mb'!,    !  'mb',   'mb'
-500    format(A4, A7, A8, A6, A8, A8, A8, A8, A9, A9, A9)
        if (hydrostatic) then
-          call mpp_error(NOTE, 'Hydrostatic debug sounding not yet supported')
+          write(unit,500) 'k', 'T', 'delp',   'u',   'v',  'sphum', 'cond', 'pres' !, 'pdry', 'NHpdry'
+          write(unit,500) ' ', 'K',   'mb', 'm/s', 'm/s',   'g/kg', 'g/kg', 'mb'    !  'mb',   'mb'
+500       format(A4, A7, A8, A8, A8, A8, A9, A9)
+          pehyd = ptop
+          do k=1,npz
+             pehyd(k+1) = pehyd(k) + delp(i,j,k)
+             preshyd(k) = (pehyd(k+1) - pehyd(k))/log(pehyd(k+1)/pehyd(k))
+          enddo
+
+          do k=max(diag_debug_kbottom-diag_debug_nlevels,1),min(diag_debug_kbottom,npz)
+             cond = 0.
+             do l=2,nwat
+                cond = cond + q(i,j,k,l)
+             enddo
+             write(unit,'(I4, F7.2, F8.3, F8.3, F8.3, F8.3, F9.5, F9.3)') &
+                  k, pt(i,j,k), delp(i,j,k)*0.01, u(i,j,k), v(i,j,k), &
+                  q(i,j,k,sphum)*1000., cond*1000., preshyd(k)*1.e-2!, presdry*1.e-2, (presdry-preshyddry(k))*1.e-2
+          enddo
+
        else
+          write(unit,501) 'k', 'T', 'delp', 'delz',   'u',   'v',   'w', 'sphum', 'cond', 'pres', 'NHprime'!, 'pdry', 'NHpdry'
+          write(unit,501) ' ', 'K',   'mb',    'm', 'm/s', 'm/s', 'm/s',  'g/kg', 'g/kg', 'mb',   'mb'!,    !  'mb',   'mb'
+501       format(A4, A7, A8, A6, A8, A8, A8, A8, A9, A9, A9)
           pehyd = ptop
           pehyddry = ptop
           do k=1,npz
@@ -380,7 +427,8 @@ contains
 
        write(unit, *) '==================================================================='
        write(unit, *)
-       flush(unit)
+
+       call flush(unit)
 
     enddo
 
@@ -412,7 +460,7 @@ contains
     rdg = -rdgas/grav
     cv_air = cp_air - rdgas
 
-    do n=1,size(diag_debug_i)
+    do n=1,size(diag_debug_units)
 
        i=diag_debug_i(n)
        j=diag_debug_j(n)
@@ -423,53 +471,86 @@ contains
 
        write(unit, *) "DEBUG POINT ",  diag_debug_names(n)
        write(unit, *)
-       call get_date(Time, yr, mon, dd, hr, mn, seconds)
-       write(unit, '(A, I6, A12, 4I4)') " Time: ", yr, month_name(mon), dd, hr, mn, seconds
+       if (m_calendar) then
+          call get_date(Time, yr, mon, dd, hr, mn, seconds)
+          write(unit, '(A, I6, A12, 4I4)') " Time: ", yr, month_name(mon), dd, hr, mn, seconds
+       else
+          call get_time (Time, seconds,  dd)
+          write(unit, '(A, I6, I6)') " Time: ", dd, seconds
+       endif
        write(unit,*) 'k_split = ', k_step, ', n_split = ', n_step
        write(unit, *)
        write(unit, '(A, F8.3, A, F8.3)') ' longitude = ', diag_debug_lon(n), ' latitude = ', diag_debug_lat(n)
        write(unit, '(A, I8, A, I6, A, I6)') ' on processor # ', mpp_pe(), ' :  local i = ', i, ',   local j = ', j
        write(unit, *)
 
-       write(unit,500) 'k', 'T', 'delp', 'delz',   'u',   'v',   'w', 'sphum', 'cond', 'pres', 'NHprime', 'heat'
-       write(unit,500)  ' ', 'K',   'mb',    'm', 'm/s', 'm/s', 'm/s',  'g/kg', 'g/kg', 'mb', 'mb', 'K'
-500    format(A4, A7, A8, A6, A8, A8, A8, A8, A9, A9, A9, A8)
-          if (hydrostatic) then
-             call mpp_error(NOTE, 'Hydrostatic debug sounding not yet supported')
-          else
-             pehyd = ptop
-             do k=1,npz
-                pehyd(k+1) = pehyd(k) + delp(i,j,k)
-                preshyd(k) = (pehyd(k+1) - pehyd(k))/log(pehyd(k+1)/pehyd(k))
+       if (hydrostatic) then
+          write(unit,501) 'k', 'T', 'delp',   'u',   'v',  'sphum', 'cond', 'pres' !, 'pdry', 'NHpdry'
+          write(unit,501) ' ', 'K',   'mb', 'm/s', 'm/s',   'g/kg', 'g/kg', 'mb'    !  'mb',   'mb'
+501       format(A4, A7, A8, A8, A8, A8, A9, A9)
+          pehyd = ptop
+          do k=1,npz
+             pehyd(k+1) = pehyd(k) + delp(i,j,k)
+             preshyd(k) = (pehyd(k+1) - pehyd(k))/log(pehyd(k+1)/pehyd(k))
+          enddo
+
+          do k=max(diag_debug_kbottom-diag_debug_nlevels,1),min(diag_debug_kbottom,npz)
+             cond = 0.
+             do l=2,nwat
+                cond = cond + q(i,j,k,l)
              enddo
-             !do k=2*npz/3,npz
-             do k=max(diag_debug_kbottom-diag_debug_nlevels,1),min(diag_debug_kbottom,npz)
-                cond = 0.
-                do l=2,nwat
-                   cond = cond + q(i,j,k,l)
-                enddo
-                virt = (1.+zvir*q(i,j,k,sphum))
+             virt = (1.+zvir*q(i,j,k,sphum))
+             !NOTE: Moist cappa not implemented for hydrostatic dynamics.
+             pk = exp(akap*log(preshyd(k)))
+             temp = pt(i,j,k)*pk/virt
+             if (use_heat_source) then
+                heats = heat_source(i,j,k) / (cp_air*delp(i,j,k))
+             else
+                heats = 0.0
+             endif
+             write(unit,'(I4, F7.2, F8.3, F8.3, F8.3, F8.3, F9.5, F9.3, 1x, G9.3)') &
+                  k, temp, delp(i,j,k)*0.01, u(i,j,k), v(i,j,k), &
+                  q(i,j,k,sphum)*1000., cond*1000., preshyd(k)*1.e-2, heats!, presdry*1.e-2, (presdry-preshyddry(k))*1.e-2
+          enddo
+       else
+          write(unit,500) 'k', 'T', 'delp', 'delz',   'u',   'v',   'w', 'sphum', 'cond', 'pres', 'NHprime', 'heat'
+          write(unit,500)  ' ', 'K',   'mb',    'm', 'm/s', 'm/s', 'm/s',  'g/kg', 'g/kg', 'mb', 'mb', 'K'
+500       format(A4, A7, A8, A6, A8, A8, A8, A8, A9, A9, A9, A8)
+          pehyd = ptop
+          do k=1,npz
+             pehyd(k+1) = pehyd(k) + delp(i,j,k)
+             preshyd(k) = (pehyd(k+1) - pehyd(k))/log(pehyd(k+1)/pehyd(k))
+          enddo
+          !do k=2*npz/3,npz
+          do k=max(diag_debug_kbottom-diag_debug_nlevels,1),min(diag_debug_kbottom,npz)
+             cond = 0.
+             do l=2,nwat
+                cond = cond + q(i,j,k,l)
+             enddo
+             virt = (1.+zvir*q(i,j,k,sphum))
 #ifdef MOIST_CAPPA
-                pres = exp(1./(1.-cappa(i,j,k))*log(rdg*(delp(i,j,k)-cond)/delz(i,j,k)*pt(i,j,k)) )
-                pk = exp(cappa(i,j,k)*log(pres))
+             pres = exp(1./(1.-cappa(i,j,k))*log(rdg*(delp(i,j,k)-cond)/delz(i,j,k)*pt(i,j,k)) )
+             pk = exp(cappa(i,j,k)*log(pres))
 #else
-                pres = exp(1./(1.-akap)*log(rdg*(delp(i,j,k))/delz(i,j,k)*pt(i,j,k)) )
-                pk = exp(akap*log(pres))
+             pres = exp(1./(1.-akap)*log(rdg*(delp(i,j,k))/delz(i,j,k)*pt(i,j,k)) )
+             pk = exp(akap*log(pres))
 #endif
-                temp = pt(i,j,k)*pk/virt
-                if (use_heat_source) then
-                   heats = heat_source(i,j,k) / (cv_air*delp(i,j,k))
-                else
-                   heats = 0.0
-                endif
-                write(unit,'(I4, F7.2, F8.3, I6, F8.3, F8.3, F8.3, F8.3, F9.5, F9.3, F9.3, G9.3 )') &
-                     k, temp, delp(i,j,k)*0.01, -int(delz(i,j,k)), u(i,j,k), v(i,j,k), w(i,j,k), &
-                     q(i,j,k,sphum)*1000., cond*1000., pres*1.e-2, (pres-preshyd(k))*1.e-2, heats
-             enddo
-          endif
+             temp = pt(i,j,k)*pk/virt
+             if (use_heat_source) then
+                heats = heat_source(i,j,k) / (cv_air*delp(i,j,k))
+             else
+                heats = 0.0
+             endif
+             write(unit,'(I4, F7.2, F8.3, I6, F8.3, F8.3, F8.3, F8.3, F9.5, F9.3, F9.3, 1x, G9.3 )') &
+                  k, temp, delp(i,j,k)*0.01, -int(delz(i,j,k)), u(i,j,k), v(i,j,k), w(i,j,k), &
+                  q(i,j,k,sphum)*1000., cond*1000., pres*1.e-2, (pres-preshyd(k))*1.e-2, heats
+          enddo
+       endif
 
        write(unit, *) '==================================================================='
        write(unit, *)
+
+       call flush(unit)
 
     enddo
 
@@ -503,9 +584,13 @@ contains
     integer :: i, j, k, n, unit
     integer :: yr_v, mo_v, dy_v, hr_v, mn_v, sec_v ! need to get numbers for these
 
-    call get_date(Time, yr_v, mo_v, dy_v, hr_v, mn_v, sec_v)
+    if (m_calendar) then
+       call get_date(Time, yr_v, mo_v, dy_v, hr_v, mn_v, sec_v)
+    else
+       call get_time (Time, sec_v,  dy_v)
+    endif
 
-    do n=1,size(diag_sonde_i)
+    do n=1,size(diag_sonde_units)
 
        i=diag_sonde_i(n)
        j=diag_sonde_j(n)
@@ -515,11 +600,13 @@ contains
        if (j < bd%js .or. j > bd%je) cycle
 
 
+       if (m_calendar) then
           write(unit,600)        &
                trim(diag_sonde_names(n)), yr_v, mo_v, dy_v, hr_v, init_str, trim(runname)
 600       format(A,'.v', I4, I2.2, I2.2, I2.2, '.i', A10, '.', A, '.dat########################################################')
           write(unit,601) trim(diag_sonde_names(n)), yr_v, mo_v, dy_v, hr_v, init_str(1:8),init_str(9:10)
 601       format(3x, A16, ' Valid ', I4, I2.2, I2.2, '.', I2.2, 'Z  Init ', A8, '.', A2, 'Z')
+       endif
           write(unit,'(5x, A, 2F8.3)') trim(runname), diag_sonde_lon(n), diag_sonde_lat(n)
           write(unit,*)
           write(unit,*)        '-------------------------------------------------------------------------------'
@@ -542,9 +629,11 @@ contains
                 !if (pres < sounding_top) cycle
 
 #ifdef MULTI_GASES
-                call qsmith(1, 1, 1, 1, pt(i,j,k:k), (/pres/), q(i,j,k:k,sphum), qs)
+                call mqs3d(1, 1, 1, 1, pt(i,j,k:k),   &
+                     (/pres/), q(i,j,k:k,sphum), qs)
 #else
-                call qsmith(1, 1, 1, pt(i,j,k:k), (/pres/), q(i,j,k:k,sphum), qs)
+                call mqs3d(1, 1, 1, pt(i,j,k:k),   &
+                     (/pres/), q(i,j,k:k,sphum), qs)
 #endif
 
                 mixr = q(i,j,k,sphum)/(1.-sum(q(i,j,k,1:nwat))) ! convert from sphum to mixing ratio
@@ -566,6 +655,8 @@ contains
                      pres*1.e-2, int(hght(k)), pt(i,j,k)-TFREEZE, dewpt, int(rh*100.), mixr*1.e3, int(wdir), wspd, theta, thetae(i,j,k), thetav
              enddo
           endif
+
+          call flush(unit)
 
     enddo
 

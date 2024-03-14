@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -117,8 +117,9 @@ module fv_treat_da_inc_mod
                                get_tracer_index
   use field_manager_mod, only: MODEL_ATMOS
 
-  use constants_mod,     only: pi=>pi_8, omega, grav, kappa, &
+  use constants_mod,     only: pi=>pi_8, grav, kappa, &
                                rdgas, rvgas, cp_air
+  use fv_arrays_mod,     only: omega ! scaled for small earth
   use fv_arrays_mod,     only: fv_atmos_type, &
                                fv_grid_type, &
                                fv_grid_bounds_type, &
@@ -153,19 +154,10 @@ contains
   !! and added upon request.
   !>@author Xi.Chen <xi.chen@noaa.gov>
   !>@date 02/12/2016
-   subroutine read_da_inc(Atm, fv_domain, bd, npz_in, nq, u, v, q, delp, pt, delz, is_in, js_in, ie_in, je_in,  &
-                                                                                   isc_in, jsc_in, iec_in, jec_in )
+
+  subroutine read_da_inc(Atm, fv_domain)
     type(fv_atmos_type),       intent(inout) :: Atm
     type(domain2d),            intent(inout) :: fv_domain
-    type(fv_grid_bounds_type), intent(IN) :: bd
-    integer,                   intent(IN) :: npz_in, nq, is_in, js_in, ie_in, je_in, isc_in, jsc_in, iec_in, jec_in
-    real, intent(inout), dimension(is_in:ie_in,  js_in:je_in+1,npz_in):: u  ! D grid zonal wind (m/s)
-    real, intent(inout), dimension(is_in:ie_in+1,js_in:je_in  ,npz_in):: v  ! D grid meridional wind (m/s)
-    real, intent(inout) :: delp(is_in:ie_in  ,js_in:je_in  ,npz_in)  ! pressure thickness (pascal)
-    real, intent(inout) :: pt(  is_in:ie_in  ,js_in:je_in  ,npz_in)  ! temperature (K)
-    real, intent(inout) :: q(   is_in:ie_in  ,js_in:je_in  ,npz_in, nq)  !
-    real, intent(inout) :: delz(isc_in:iec_in  ,jsc_in:jec_in  ,npz_in)  !
-
     ! local
     real :: deg2rad
     character(len=128) :: fname
@@ -185,14 +177,14 @@ contains
     integer, dimension(Atm%bd%is:Atm%bd%ie,Atm%bd%js:Atm%bd%je+1)::&
         id1_d, id2_d, jdc_d
 
-    integer:: i, j, k, im, jm, km, npt
+    integer:: i, j, k, im, jm, km, npz, npt
     integer:: i1, i2, j1, ncid
     integer:: jbeg, jend
     integer tsize(3)
     real(kind=R_GRID), dimension(2):: p1, p2, p3
     real(kind=R_GRID), dimension(3):: e1, e2, ex, ey
 
-    logical:: found
+    logical:: found, cliptracers
     integer :: is,  ie,  js,  je
     integer :: isd, ied, jsd, jed
     integer :: sphum, liq_wat
@@ -210,8 +202,17 @@ contains
     ied = Atm%bd%ied
     jsd = Atm%bd%jsd
     jed = Atm%bd%jed
+    isc = Atm%bd%isc
+    iec = Atm%bd%iec
+    jsc = Atm%bd%jsc
+    jec = Atm%bd%jec
+
 
     deg2rad = pi/180.
+
+    npz = Atm%npz
+
+    cliptracers = .true.
 
     fname = 'INPUT/'//Atm%flagstruct%res_latlon_dynamics
 
@@ -223,10 +224,10 @@ contains
 
       im = tsize(1); jm = tsize(2); km = tsize(3)
 
-      if (km.ne.npz_in) then
+      if (km.ne.npz) then
         if (is_master()) print *, 'km = ', km
         call mpp_error(FATAL, &
-            '==> Error in read_da_inc: km is not equal to npz_in')
+            '==> Error in read_da_inc: km is not equal to npz')
       endif
 
       if(is_master())  write(*,*) fname, ' DA increment dimensions:', tsize
@@ -279,20 +280,22 @@ contains
     allocate ( wk3(1:im,jbeg:jend, 1:km) )
     allocate (  tp(is:ie,js:je,km) )
 
-    call apply_inc_on_3d_scalar('T_inc',pt, is_in, js_in, ie_in, je_in)
-    call apply_inc_on_3d_scalar('delp_inc',delp, is_in, js_in, ie_in, je_in)
+    call apply_inc_on_3d_scalar('T_inc',Atm%pt,isd,jsd,ied,jed)
+    call apply_inc_on_3d_scalar('delp_inc',Atm%delp,isd,jsd,ied,jed)
     if ( .not. Atm%flagstruct%hydrostatic ) then
-        call apply_inc_on_3d_scalar('delz_inc',delz, isc_in, jsc_in, iec_in, jec_in)
+        call apply_inc_on_3d_scalar('delz_inc',Atm%delz,isc,jsc,iec,jec)
     endif
-    call apply_inc_on_3d_scalar('sphum_inc',q(:,:,:,sphum), is_in, js_in, ie_in, je_in)
-    call apply_inc_on_3d_scalar('liq_wat_inc',q(:,:,:,liq_wat), is_in, js_in, ie_in, je_in)
+    call apply_inc_on_3d_scalar('sphum_inc',Atm%q(:,:,:,sphum),isd,jsd,ied,jed,cliptracers)
+    call apply_inc_on_3d_scalar('liq_wat_inc',Atm%q(:,:,:,liq_wat),isd,jsd,ied,jed,cliptracers)
 #ifdef MULTI_GASES
-    call apply_inc_on_3d_scalar('spo_inc',q(:,:,:,spo), is_in, js_in, ie_in, je_in)
-    call apply_inc_on_3d_scalar('spo2_inc',q(:,:,:,spo2), is_in, js_in, ie_in, je_in)
-    call apply_inc_on_3d_scalar('spo3_inc',q(:,:,:,spo3), is_in, js_in, ie_in, je_in)
+    call apply_inc_on_3d_scalar('spo_inc',Atm%q(:,:,:,spo),isd,jsd,ied,jed,cliptracers)
+    call apply_inc_on_3d_scalar('spo2_inc',Atm%q(:,:,:,spo2),isd,jsd,ied,jed,cliptracers)
+    call apply_inc_on_3d_scalar('spo3_inc',Atm%q(:,:,:,spo3),isd,jsd,ied,jed,cliptracers)
 #else
-    call apply_inc_on_3d_scalar('o3mr_inc',q(:,:,:,o3mr), is_in, js_in, ie_in, je_in)
+    call apply_inc_on_3d_scalar('o3mr_inc',Atm%q(:,:,:,o3mr),isd,jsd,ied,jed,cliptracers)
 #endif
+
+    call apply_inc_on_3d_scalar('o3mr_inc',Atm%q(:,:,:,o3mr),isd,jsd,ied,jed,cliptracers)
 
     deallocate ( tp )
     deallocate ( wk3 )
@@ -353,7 +356,7 @@ contains
           call get_latlon_vector(p3, ex, ey)
           vd_inc(i,j,k) = u_inc(i,j,k)*inner_prod(e2,ex) + &
                           v_inc(i,j,k)*inner_prod(e2,ey)
-          v(i,j,k) = v(i,j,k) + vd_inc(i,j,k)
+          Atm%v(i,j,k) = Atm%v(i,j,k) + vd_inc(i,j,k)
         enddo
       enddo
     enddo
@@ -406,7 +409,7 @@ contains
           call get_latlon_vector(p3, ex, ey)
           ud_inc(i,j,k) = u_inc(i,j,k)*inner_prod(e1,ex) + &
                           v_inc(i,j,k)*inner_prod(e1,ey)
-          u(i,j,k) = u(i,j,k) + ud_inc(i,j,k)
+          Atm%u(i,j,k) = Atm%u(i,j,k) + ud_inc(i,j,k)
         enddo
       enddo
     enddo
@@ -430,17 +433,28 @@ contains
    !---------------------------------------------------------------------------
    !> @brief The subroutine 'apply_inc_on3d_scalar' applies the input increments
    !! to the prognostic variables.
-    subroutine apply_inc_on_3d_scalar(field_name,var, is_in, js_in, ie_in, je_in)
+    subroutine apply_inc_on_3d_scalar(field_name,var,is_in,js_in,ie_in,je_in, &
+                                      cliptracers)
       character(len=*), intent(in) :: field_name
       integer, intent(IN) :: is_in, js_in, ie_in, je_in
       real, dimension(is_in:ie_in,js_in:je_in,1:km), intent(inout) :: var
+      logical, intent(in), optional :: cliptracers
       integer :: ierr
+      real :: clip
 
+      if (field_name == 'sphum_inc' .or. field_name == 'o3mr_inc') then
+         clip=tiny(0.0)
+      else
+         clip=0.0
+      endif
+
+      if (is_master()) print*, 'Reading increments ', field_name
       call check_var_exists(ncid, field_name, ierr)
       if (ierr == 0) then
          call get_var3_r4( ncid, field_name, 1,im, jbeg,jend, 1,km, wk3 )
       else
-         if (is_master()) print *,'warning: no increment for ',trim(field_name),' found, assuming zero'
+         if (is_master()) print *,'warning: no increment for ', &
+             trim(field_name),' found, assuming zero'
          wk3 = 0.
       endif
 
@@ -453,6 +467,8 @@ contains
             tp(i,j,k) = s2c(i,j,1)*wk3(i1,j1  ,k) + s2c(i,j,2)*wk3(i2,j1  ,k)+&
                         s2c(i,j,3)*wk3(i2,j1+1,k) + s2c(i,j,4)*wk3(i1,j1+1,k)
             var(i,j,k) = var(i,j,k)+tp(i,j,k)
+            if (present(cliptracers) .and. cliptracers .and. var(i,j,k) < clip) &
+            var(i,j,k)=clip
           enddo
         enddo
       enddo

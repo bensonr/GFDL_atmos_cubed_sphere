@@ -10,7 +10,7 @@
 !* (at your option) any later version.
 !*
 !* The FV3 dynamical core is distributed in the hope that it will be
-!* useful, but WITHOUT ANYWARRANTY; without even the implied warranty
+!* useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 !* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 !* See the GNU General Public License for more details.
 !*
@@ -33,7 +33,7 @@
            id_qn, id_qn200, id_qn500, id_qn850, id_qp,            &
            id_qdt, id_acly, id_acl, id_acl2,                              &
            id_dbz, id_maxdbz, id_basedbz, id_dbz4km, id_dbztop, id_dbz_m10C, &
-           id_ctz, id_w1km, id_wmaxup, id_wmaxdn, id_cape, id_cin
+           id_ctz, id_w1km, id_wmaxup, id_wmaxdn, id_cape, id_cin, id_brn, id_shear06
 
 ! Time-dependent lon-lat fields, moving grids:
  integer :: id_mlon, id_mlat, id_mlont, id_mlatt, id_marea, id_mdx, id_mdy
@@ -49,10 +49,14 @@
  integer :: id_srh1, id_srh3, id_ustm, id_vstm
 ! NGGPS 31-level diag
  integer, allocatable :: id_u(:), id_v(:), id_t(:), id_h(:), id_q(:), id_omg(:)
+ integer, allocatable :: id_ql(:), id_qi(:), id_qr(:), id_qs(:), id_qg(:), id_cf(:)
 
  integer:: id_u_plev, id_v_plev, id_t_plev, id_h_plev, id_q_plev, id_omg_plev
+ integer:: id_ql_plev, id_qi_plev, id_qr_plev, id_qs_plev, id_qg_plev, id_cf_plev
  integer:: id_t_plev_ave, id_q_plev_ave, id_qv_dt_gfdlmp_plev_ave, id_t_dt_gfdlmp_plev_ave, id_qv_dt_phys_plev_ave, id_t_dt_phys_plev_ave
 
+ integer :: id_theta_e100, id_theta_e200, id_theta_e250, id_theta_e300, &
+            id_theta_e500, id_theta_e700, id_theta_e850, id_theta_e925,  id_theta_e1000
  ! IPCC diag
  integer :: id_rh10,  id_rh50,  id_rh100, id_rh200,  id_rh250, id_rh300, &
             id_rh500, id_rh700, id_rh850, id_rh925,  id_rh1000
@@ -69,16 +73,23 @@
      integer ic_ps, ic_ua, ic_va, ic_ppt
      integer ic_sphum
      integer, allocatable :: id_tracer(:)
+
+! dissipation estimates
+ integer :: id_diss
+
 ! ESM requested diagnostics  -  dry mass/volume mixing ratios
  integer, allocatable :: id_tracer_dmmr(:)
  integer, allocatable :: id_tracer_dvmr(:)
+ integer, allocatable :: id_tracer_burden(:)
  real,    allocatable :: w_mr(:)
+ logical, allocatable :: conv_vmr_mmr(:)
 
      real, allocatable :: phalf(:)
      real, allocatable :: zsurf(:,:)
      real, allocatable :: pt1(:)
 
-     integer :: id_prer, id_prei, id_pres, id_preg, id_cond, id_dep, id_reevap, id_sub
+     integer :: id_pret, id_prew, id_prer, id_prei, id_pres, id_preg
+     integer :: id_prefluxw, id_prefluxr, id_prefluxi, id_prefluxs, id_prefluxg
      integer :: id_qv_dt_gfdlmp, id_T_dt_gfdlmp, id_ql_dt_gfdlmp, id_qi_dt_gfdlmp
      integer :: id_qr_dt_gfdlmp, id_qg_dt_gfdlmp, id_qs_dt_gfdlmp
      integer :: id_liq_wat_dt_gfdlmp, id_ice_wat_dt_gfdlmp
@@ -95,14 +106,16 @@
                 id_iuu, id_iuv, id_iuw, id_ivv, id_ivw, id_iww   ! vertically integral of momentum flux
 
      integer :: id_uw, id_vw
-
+     integer :: id_lagrangian_tendency_of_hydrostatic_pressure
      integer :: id_t_dt_nudge, id_ps_dt_nudge, id_delp_dt_nudge, id_u_dt_nudge, id_v_dt_nudge
 
 ! EMC additions
-     integer :: id_diss, id_zratio, id_hw, id_qvw, id_qlw, id_qiw
+     integer :: id_zratio, id_hw, id_qvw, id_qlw, id_qiw
 #ifdef MULTI_GASES
      integer :: id_spo2w, id_spow, id_spo3w
 #else
      integer :: id_o3w
+#ifdef GFS_PHYS
+     integer :: id_delp_total
 #endif
 #endif _FV_DIAG__
